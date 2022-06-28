@@ -155,10 +155,11 @@ class ExplanationGenerator:
             plt.clf()
 
         model = self.models[0]
-        num_tokens = len(question.split())+4
+
         layer = model.encoder.layers[-1]
         head_attn = layer.attention_map
         attn_map = head_attn.mean(axis=0, keepdim=True).squeeze(0).cpu()
+        num_tokens = len(attn_map)-576
         encoder_idx = list(range(num_tokens))
 
         for i in range(num_tokens):

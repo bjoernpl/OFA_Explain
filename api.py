@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import FastAPI, File, UploadFile, Response, Cookie
+from fastapi import FastAPI, File, UploadFile, Response, Cookie, Form
 from fastapi.responses import FileResponse
 from fastapi.exceptions import HTTPException
 from explanation_generator import ExplanationGenerator
@@ -16,7 +16,7 @@ app = FastAPI()
 
 origins = [
     "127.0.0.1",
-    "http://localhost",
+    "http://localhost:3000",
     "http://127.0.0.1",
     "https://127.0.0.1",
     "http://127.0.0.1:8000",
@@ -47,7 +47,7 @@ def init_data():
 
 
 @app.post("/process_image")
-async def ProcessImage(file: UploadFile, question: str):
+async def ProcessImage(file: UploadFile, question: str = Form()):
     request_code = session_string(16)
 
     image_data = await file.read()
