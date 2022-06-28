@@ -2,21 +2,21 @@ version: "3.3"
 
 services:
   tunnel:
-    build: .
+    build: ./cloudflare
     restart: unless-stopped
-    command: --credentials-file '/cloudflared-credentials.json' --url "http://http:80" "a7d4f87c-c9d5-41a4-823a-28ba6a89519c"
+    command: --credentials-file '/cloudflared-credentials.json' --url "http://http:8080" "a7d4f87c-c9d5-41a4-823a-28ba6a89519c"
     volumes:
-      - "cloudflared-credentials.json:/cloudflared-credentials.json:ro"
+      - "./cloudflared-credentials.json:/cloudflared-credentials.json:ro"
     networks:
       - base
     depends_on:
       - http
 
   http:
-    image: nginx:latest
+    build: . 
     restart: unless-stopped
     volumes:
-      - "checkpoints/:/usr/src/app/checkpoints:ro"
+      - "./checkpoints/:/usr/src/app/checkpoints:ro"
     networks:
       - base
 
