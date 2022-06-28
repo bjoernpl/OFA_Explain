@@ -10,6 +10,7 @@ import os
 import string
 import random
 from fastapi.middleware.cors import CORSMiddleware
+import cv2
 
 app = FastAPI()
 
@@ -47,41 +48,35 @@ def init_data():
 
 @app.post("/process_image")
 async def ProcessImage(file: UploadFile, question: str, response: Response):
-    session = session_string(16)
-    response.set_cookie("session", session)
+    request_code = session_string(16)
 
     image_data = await file.read()
     image = Image.open(io.BytesIO(image_data))
-    answer, encoder_explanations, decoder_explanations = explanation_generator.explain(image, question, session)
+    encoder_path = os.path.join(base_dir, request_code, "encoder")
+    os.makedirs(encoder_path, exist_ok=True)
+    decoder_path = os.path.join(base_dir, request_code, "decoder")
+    os.makedirs(decoder_path, exist_ok=True)
+
+    answer, encoder_indices, decoder_indices = explanation_generator.explain(
+        image, question, encoder_path, decoder_path
+    )
     response = {
         "answer": answer,
-        "encoder_paths": [],
-        "decoder_paths" : [],
-        "session": session
+        "encoder_indices": encoder_indices,
+        "decoder_indices" : decoder_indices,
+        "request_code": request_code
     }
-    encoder_path = os.path.join(base_dir, session, "encoder")
-    os.makedirs(encoder_path, exist_ok=True)
-    decoder_path = os.path.join(base_dir, session, "decoder")
-    os.makedirs(decoder_path, exist_ok=True)
-    for i, img in enumerate(encoder_explanations):
-        path = os.path.join(encoder_path, str(i)+".png")
-        img.save(path)
-        response["encoder_paths"] += [str(i)+".png"]
-    for i, img in enumerate(decoder_explanations):
-        path = os.path.join(decoder_path, str(i)+".png")
-        #img.save(path)
-        response["decoder_paths"] += [str(i)+".png"]
 
     return response
 
 
 @app.get("/response/{enc_or_dec}/{idx_token}.png")
-async def ResultsImage(enc_or_dec: str, idx_token: int, session: str):
-    if not session:
+async def ResultsImage(enc_or_dec: str, idx_token: int, request_code: str):
+    if not request_code:
         raise HTTPException(status_code=404, detail="No session cookie found")
     if enc_or_dec not in ["encoder", "decoder"]:
         raise HTTPException(status_code=404, detail="Item not found")
-    path = os.path.join(base_dir, session, enc_or_dec, str(idx_token)+".png")
+    path = os.path.join(base_dir, request_code, enc_or_dec, str(idx_token)+".png")
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="Item not found")
     return FileResponse(path=path)

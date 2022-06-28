@@ -1,6 +1,7 @@
 import os
 import re
 
+import cv2
 import torch
 from matplotlib import pyplot as plt
 from torch.nn import functional as F
@@ -13,6 +14,7 @@ from utils.zero_shot_utils import zero_shot_step
 from tasks.mm_tasks.caption import CaptionTask
 from models.ofa import OFAModel
 from PIL import Image
+import cmapy
 
 
 
@@ -24,7 +26,7 @@ class ExplanationGenerator:
         tasks.register_task('caption', CaptionTask)
 
         # turn on cuda if GPU is available
-        self.use_cuda = False #torch.cuda.is_available()
+        self.use_cuda = torch.cuda.is_available()
         # use fp16 only when GPU is available
         self.use_fp16 = False
 
@@ -128,7 +130,7 @@ class ExplanationGenerator:
             return t.to(dtype=torch.half)
         return t
 
-    def explain(self, image, question, session=None):
+    def explain(self, image, question, encoder_path, decoder_path):
         sample = self.construct_sample(image, question)
         sample = utils.move_to_cuda(sample) if self.use_cuda else sample
         sample = utils.apply_to_sample(self.apply_half, sample) if self.use_fp16 else sample
@@ -137,25 +139,23 @@ class ExplanationGenerator:
         result_attn = result[0]["attention"]
         answer = result[0]["answer"]
 
-        output_tokens = result_attn.shape[1]
-        fig, axs = plt.subplots(1, output_tokens, figsize=(5 * output_tokens, 5))
-        full_caption = ("<cls> " + answer + " <eos>").split()
-        for i, attn in enumerate(result_attn.T.cpu()):
-            num_input_tokens = len(attn)-576
-            attn_map = attn
+        encoder_idx = []
+
+        decoder_idx = list(range(len(result_attn.T.cpu()[:-1])))
+        for i, attn_map in enumerate(result_attn.T.cpu()[:-1]):
+            num_input_tokens = len(attn_map)-576
             image_attn = attn_map[:-num_input_tokens]
             image_attn = F.softmax(image_attn)
             heatmap = torch.reshape(image_attn, (1, 1, 24, 24))
-            img_sized_heatmap = F.interpolate(heatmap, image.size[::-1], mode='bicubic')
-            axs[i].imshow(image)
-            axs[i].imshow(img_sized_heatmap.squeeze(0).squeeze(0), zorder=1, alpha=0.8)
-            axs[i].axis('off')
-            # axs[i].set_title(full_caption[i])
+            heatmap_img = F.interpolate(heatmap, image.size[::-1], mode='bicubic')
+            heatmap_img = heatmap_img.squeeze(0).squeeze(0).numpy()
+            # heatmap_img -= heatmap_img.min()
+            # heatmap_img /= heatmap_img.max()
 
-        plt.tight_layout()
-        path = os.path.join(os.getcwd(), f"results/{session}/decoder/")
-        os.makedirs(path, exist_ok=True)
-        plt.savefig(os.path.join(path, "0.png"))
-        plt.close()
-        print(" ".join(full_caption))
-        return answer, [image]*4, [image]
+            plt.imshow(image)
+            plt.imshow(heatmap_img, zorder=1, alpha=0.7)
+            path = os.path.join(decoder_path, str(i) + ".png")
+            plt.axis("off")
+            plt.savefig(path, bbox_inches='tight',  pad_inches=0)
+
+        return answer, encoder_idx, decoder_idx
