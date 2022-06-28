@@ -13,3 +13,4 @@ fastapi
 matplotlib
 python-multipart
 pillow
+uvicorn[standard]
