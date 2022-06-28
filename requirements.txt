@@ -9,3 +9,7 @@ pytorch_lightning
 einops
 datasets
 rouge_score
+fastapi
+matplotlib
+python-multipart
+pillow

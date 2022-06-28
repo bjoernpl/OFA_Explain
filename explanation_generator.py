@@ -1,7 +1,6 @@
 import os
 import re
 
-import cv2
 import torch
 from matplotlib import pyplot as plt
 from torch.nn import functional as F
@@ -12,9 +11,7 @@ from fairseq import options
 from fairseq.dataclass.utils import convert_namespace_to_omegaconf
 from utils.zero_shot_utils import zero_shot_step
 from tasks.mm_tasks.caption import CaptionTask
-from models.ofa import OFAModel
 from PIL import Image
-import cmapy
 
 
 
