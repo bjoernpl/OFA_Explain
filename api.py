@@ -47,7 +47,7 @@ def init_data():
 
 
 @app.post("/process_image")
-async def ProcessImage(file: UploadFile, question: str, response: Response):
+async def ProcessImage(file: UploadFile, question: str):
     request_code = session_string(16)
 
     image_data = await file.read()
@@ -73,7 +73,7 @@ async def ProcessImage(file: UploadFile, question: str, response: Response):
 @app.get("/response/{enc_or_dec}/{idx_token}.png")
 async def ResultsImage(enc_or_dec: str, idx_token: int, request_code: str):
     if not request_code:
-        raise HTTPException(status_code=404, detail="No session cookie found")
+        raise HTTPException(status_code=404, detail="No request code")
     if enc_or_dec not in ["encoder", "decoder"]:
         raise HTTPException(status_code=404, detail="Item not found")
     path = os.path.join(base_dir, request_code, enc_or_dec, str(idx_token)+".png")

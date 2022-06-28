@@ -139,8 +139,6 @@ class ExplanationGenerator:
         result_attn = result[0]["attention"]
         answer = result[0]["answer"]
 
-        encoder_idx = []
-
         decoder_idx = list(range(len(result_attn.T.cpu()[:-1])))
         for i, attn_map in enumerate(result_attn.T.cpu()[:-1]):
             num_input_tokens = len(attn_map)-576
@@ -154,8 +152,33 @@ class ExplanationGenerator:
 
             plt.imshow(image)
             plt.imshow(heatmap_img, zorder=1, alpha=0.7)
-            path = os.path.join(decoder_path, str(i) + ".png")
             plt.axis("off")
+            path = os.path.join(decoder_path, str(i) + ".png")
             plt.savefig(path, bbox_inches='tight',  pad_inches=0)
+            plt.clf()
+
+        model = self.models[0]
+        num_tokens = len(question.split())+4
+        layer = model.encoder.layers[-1]
+        head_attn = layer.attention_map
+        attn_map = head_attn.mean(axis=0, keepdim=True).squeeze(0).cpu()
+        encoder_idx = list(range(num_tokens))
+
+        for i in range(num_tokens):
+            image_attn = attn_map[576 + i, :-num_tokens]
+            # self_attn = attn_map[576 + i, -num_tokens:]
+            # self_attn = F.softmax(self_attn)
+            # self_attn -= self_attn.min()
+            # self_attn /= self_attn.max()
+
+            image_attn = F.softmax(image_attn)
+            heatmap = torch.reshape(image_attn, (1, 1, 24, 24))
+            img_sized_heatmap = F.interpolate(heatmap, image.size[::-1], mode='bicubic')
+            plt.imshow(image)
+            plt.imshow(img_sized_heatmap.squeeze(0).squeeze(0), zorder=1, alpha=0.7)
+            plt.axis('off')
+            path = os.path.join(encoder_path, str(i) + ".png")
+            plt.savefig(path, bbox_inches='tight', pad_inches=0)
+            plt.clf()
 
         return answer, encoder_idx, decoder_idx
