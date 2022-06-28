@@ -1,4 +1,5 @@
 import os
+import re
 
 import torch
 from matplotlib import pyplot as plt
@@ -6,7 +7,9 @@ from torch.nn import functional as F
 import numpy as np
 from fairseq import utils,tasks
 from fairseq import checkpoint_utils
-from utils.eval_utils import eval_step
+from fairseq import options
+from fairseq.dataclass.utils import convert_namespace_to_omegaconf
+from utils.zero_shot_utils import zero_shot_step
 from tasks.mm_tasks.caption import CaptionTask
 from models.ofa import OFAModel
 from PIL import Image
@@ -16,6 +19,7 @@ from PIL import Image
 
 class ExplanationGenerator:
     def __init__(self):
+
         # Register caption task
         tasks.register_task('caption', CaptionTask)
 
@@ -24,12 +28,16 @@ class ExplanationGenerator:
         # use fp16 only when GPU is available
         self.use_fp16 = False
 
-        # Load pretrained ckpt & config
-        overrides = {"bpe_dir": "utils/BPE", "eval_cider": False, "beam": 5, "max_len_b": 16, "no_repeat_ngram_size": 3,
-                     "seed": 7}
-        self.models, self.cfg, self.task = checkpoint_utils.load_model_ensemble_and_task(
-            utils.split_paths('checkpoints/caption.pt'),
-            arg_overrides=overrides
+        parser = options.get_generation_parser()
+        input_args = ["", "--task=vqa_gen", "--beam=100", "--unnormalized", "--path=checkpoints/ofa_large_384.pt",
+                      "--bpe-dir=utils/BPE"]
+        args = options.parse_args_and_arch(parser, input_args)
+        self.cfg = convert_namespace_to_omegaconf(args)
+
+        self.task = tasks.setup_task(self.cfg.task)
+        self.models, self.cfg = checkpoint_utils.load_model_ensemble(
+            utils.split_paths(self.cfg.common_eval.path),
+            task=self.task
         )
 
         # Move models to GPU
@@ -61,6 +69,21 @@ class ExplanationGenerator:
         self.eos_item = torch.LongTensor([self.task.src_dict.eos()])
         self.pad_idx = self.task.src_dict.pad()
 
+    # Normalize the question
+    def pre_question(self, question, max_ques_words):
+        question = question.lower().lstrip(",.!?*#:;~").replace('-', ' ').replace('/', ' ')
+        question = re.sub(
+            r"\s{2,}",
+            ' ',
+            question,
+        )
+        question = question.rstrip('\n')
+        question = question.strip(' ')
+        # truncate question
+        question_words = question.split(' ')
+        if len(question_words) > max_ques_words:
+            question = ' '.join(question_words[:max_ques_words])
+        return question
 
     def encode_text(self, text, length=None, append_bos=False, append_eos=False):
         s = self.task.tgt_dict.encode_line(
@@ -77,19 +100,25 @@ class ExplanationGenerator:
         return s
 
     # Construct input for caption task
-    def construct_sample(self, image: Image, question=None):
+    def construct_sample(self, image: Image, question: str):
         patch_image = self.patch_resize_transform(image).unsqueeze(0)
         patch_mask = torch.tensor([True])
-        src_text = self.encode_text(question, append_bos=True, append_eos=True).unsqueeze(0)
+
+        question = self.pre_question(question, self.task.cfg.max_src_length)
+        question = question + '?' if not question.endswith('?') else question
+        src_text = self.encode_text(' {}'.format(question), append_bos=True, append_eos=True).unsqueeze(0)
+
         src_length = torch.LongTensor([s.ne(self.pad_idx).long().sum() for s in src_text])
+        ref_dict = np.array([{'yes': 1.0}])  # just placeholder
         sample = {
             "id": np.array(['42']),
             "net_input": {
                 "src_tokens": src_text,
                 "src_lengths": src_length,
                 "patch_images": patch_image,
-                "patch_masks": patch_mask
-            }
+                "patch_masks": patch_mask,
+            },
+            "ref_dict": ref_dict,
         }
         return sample
 
@@ -101,23 +130,22 @@ class ExplanationGenerator:
 
     def explain(self, image, question, session=None):
         sample = self.construct_sample(image, question)
-        print(sample)
         sample = utils.move_to_cuda(sample) if self.use_cuda else sample
         sample = utils.apply_to_sample(self.apply_half, sample) if self.use_fp16 else sample
 
-        result, scores = eval_step(self.task, self.generator, self.models, sample)
+        result, scores = zero_shot_step(self.task, self.generator, self.models, sample)
         result_attn = result[0]["attention"]
-        unmodified_caption = result[0]["unmodified_caption"]
+        answer = result[0]["answer"]
 
         output_tokens = result_attn.shape[1]
         fig, axs = plt.subplots(1, output_tokens, figsize=(5 * output_tokens, 5))
-        full_caption = ("<cls> " + unmodified_caption + " <eos>").split()
+        full_caption = ("<cls> " + answer + " <eos>").split()
         for i, attn in enumerate(result_attn.T.cpu()):
-            num_input_tokens = len(attn)-900
+            num_input_tokens = len(attn)-576
             attn_map = attn
             image_attn = attn_map[:-num_input_tokens]
             image_attn = F.softmax(image_attn)
-            heatmap = torch.reshape(image_attn, (1, 1, 30, 30))
+            heatmap = torch.reshape(image_attn, (1, 1, 24, 24))
             img_sized_heatmap = F.interpolate(heatmap, image.size[::-1], mode='bicubic')
             axs[i].imshow(image)
             axs[i].imshow(img_sized_heatmap.squeeze(0).squeeze(0), zorder=1, alpha=0.8)
@@ -130,4 +158,4 @@ class ExplanationGenerator:
         plt.savefig(os.path.join(path, "0.png"))
         plt.close()
         print(" ".join(full_caption))
-        return result[0]["caption"], [image]*4, [image]
+        return answer, [image]*4, [image]

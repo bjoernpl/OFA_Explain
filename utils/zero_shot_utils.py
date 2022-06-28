@@ -32,7 +32,11 @@ def eval_vqa_gen(task, generator, models, sample, **kwargs):
     results = []
     for i, sample_id in enumerate(sample["id"].tolist()):
         detok_hypo_str = decode_fn(hypos[i][0]["tokens"], task.tgt_dict, task.bpe, generator)
-        results.append({"question_id": sample_id, "answer": detok_hypo_str.strip()})
+        results.append({
+            "question_id": sample_id,
+            "answer": detok_hypo_str.strip(),
+            "attention": hypos[i][0]["attention"]
+        })
     scores = [ref_dict.get(result['answer'], 0) for ref_dict, result in zip(sample['ref_dict'], results)]
     return results, scores
 
