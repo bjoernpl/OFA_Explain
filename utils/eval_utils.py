@@ -38,7 +38,10 @@ def eval_caption(task, generator, models, sample, **kwargs):
     results = []
     for i, sample_id in enumerate(sample["id"].tolist()):
         detok_hypo_str = decode_fn(hypos[i][0]["tokens"], task.tgt_dict, task.bpe, generator)
-        results.append({"image_id": str(sample_id), "caption": detok_hypo_str.translate(transtab).strip()})
+        results.append({"image_id": str(sample_id),
+                        "caption": detok_hypo_str.translate(transtab).strip(),
+                        "attention": hypos[i][0]["attention"],
+                        "unmodified_caption": detok_hypo_str})
     return results, None
 
 
