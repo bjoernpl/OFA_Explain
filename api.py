@@ -39,6 +39,12 @@ def session_string(str_size):
 base_dir = os.path.join(os.getcwd(), "results")
 
 
+@app.on_event('startup')
+def init_data():
+    global explanation_generator
+    explanation_generator= ExplanationGenerator()
+
+
 @app.post("/process_image")
 async def ProcessImage(file: UploadFile, question: str, response: Response):
     session = session_string(16)
@@ -46,8 +52,7 @@ async def ProcessImage(file: UploadFile, question: str, response: Response):
 
     image_data = await file.read()
     image = Image.open(io.BytesIO(image_data))
-    ofa_explain = ExplanationGenerator()
-    answer, encoder_explanations, decoder_explanations = ofa_explain.explain(image, question)
+    answer, encoder_explanations, decoder_explanations = explanation_generator.explain(image, question, session)
     response = {
         "answer": answer,
         "encoder_paths": [],
@@ -64,7 +69,7 @@ async def ProcessImage(file: UploadFile, question: str, response: Response):
         response["encoder_paths"] += [str(i)+".png"]
     for i, img in enumerate(decoder_explanations):
         path = os.path.join(decoder_path, str(i)+".png")
-        img.save(path)
+        #img.save(path)
         response["decoder_paths"] += [str(i)+".png"]
 
     return response
