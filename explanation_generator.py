@@ -33,6 +33,8 @@ class ExplanationGenerator:
         args = options.parse_args_and_arch(parser, input_args)
         self.cfg = convert_namespace_to_omegaconf(args)
 
+        # @TODO lukas: wget https://ofa-silicon.oss-us-west-1.aliyuncs.com/checkpoints/ofa_large_384.pt
+        # -> checkpoints/ofa_large_384.pt
         self.task = tasks.setup_task(self.cfg.task)
         self.models, self.cfg = checkpoint_utils.load_model_ensemble(
             utils.split_paths(self.cfg.common_eval.path),
