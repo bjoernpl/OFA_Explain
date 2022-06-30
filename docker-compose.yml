@@ -15,6 +15,7 @@ services:
   http:
     build: . 
     restart: unless-stopped
+    runtime: nvidia
     volumes:
       - "./checkpoints/:/usr/src/app/checkpoints:ro"
     networks:
