@@ -130,7 +130,7 @@ class ExplanationGenerator:
         return t
 
     def explain(self, image, question, encoder_path, decoder_path):
-        new_shape = 500 * image.size / np.max(image.size)
+        new_shape = 500 * np.array(image.size()) / np.max(image.size())
         image = image.resize(new_shape, Image.ANTIALIAS)
 
         sample = self.construct_sample(image, question)
