@@ -1,4 +1,4 @@
-FROM python:3.9-buster
+FROM nvcr.io/nvidia/pytorch:22.06-py3
 
 RUN apt-get update
 RUN DEBIAN_FRONTEND=noninteractive TZ=Europe/Berlin apt-get -y install tzdata
@@ -9,6 +9,7 @@ WORKDIR /usr/src/app
 COPY requirements.txt ./
 COPY fairseq ./fairseq
 RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install opencv-python==4.5.5.64
 
 COPY . .
 
