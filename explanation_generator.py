@@ -1,19 +1,18 @@
 import os
 import re
 
+import numpy as np
 import torch
+from PIL import Image
 from matplotlib import pyplot as plt
 from torch.nn import functional as F
-import numpy as np
-from fairseq import utils,tasks
+
 from fairseq import checkpoint_utils
 from fairseq import options
+from fairseq import utils, tasks
 from fairseq.dataclass.utils import convert_namespace_to_omegaconf
-from utils.zero_shot_utils import zero_shot_step
 from tasks.mm_tasks.caption import CaptionTask
-from PIL import Image
-
-
+from utils.zero_shot_utils import zero_shot_step
 
 
 class ExplanationGenerator:
@@ -60,7 +59,8 @@ class ExplanationGenerator:
 
         self.patch_resize_transform = transforms.Compose([
             lambda image: image.convert("RGB"),
-            transforms.Resize((self.cfg.task.patch_image_size, self.cfg.task.patch_image_size), interpolation=Image.BICUBIC),
+            transforms.Resize((self.cfg.task.patch_image_size, self.cfg.task.patch_image_size),
+                              interpolation=Image.BICUBIC),
             transforms.ToTensor(),
             transforms.Normalize(mean=mean, std=std),
         ])
@@ -129,9 +129,11 @@ class ExplanationGenerator:
             return t.to(dtype=torch.half)
         return t
 
-    def explain(self, image, question, encoder_path, decoder_path):
-        new_shape = 500 * np.array(image.size()) / np.max(image.size())
-        image = image.resize(new_shape, Image.ANTIALIAS)
+    def explain(self, image: Image, question, encoder_path, decoder_path):
+        image_max = np.max(image.size)
+        if image_max > 500:
+            new_shape = (500 * np.array(image.size) / image_max).astype(int)
+            image = image.resize(new_shape, Image.ANTIALIAS)
 
         sample = self.construct_sample(image, question)
         sample = utils.move_to_cuda(sample) if self.use_cuda else sample
@@ -143,7 +145,7 @@ class ExplanationGenerator:
 
         decoder_idx = list(range(len(result_attn.T.cpu()[:-1])))
         for i, attn_map in enumerate(result_attn.T.cpu()[:-1]):
-            num_input_tokens = len(attn_map)-576
+            num_input_tokens = len(attn_map) - 576
             image_attn = attn_map[:-num_input_tokens]
             image_attn = F.softmax(image_attn)
             heatmap = torch.reshape(image_attn, (1, 1, 24, 24))
@@ -156,7 +158,7 @@ class ExplanationGenerator:
             plt.imshow(heatmap_img, zorder=1, alpha=0.7)
             plt.axis("off")
             path = os.path.join(decoder_path, str(i) + ".png")
-            plt.savefig(path, bbox_inches='tight',  pad_inches=0)
+            plt.savefig(path, bbox_inches='tight', pad_inches=0)
             plt.clf()
 
         model = self.models[0]
@@ -164,7 +166,7 @@ class ExplanationGenerator:
         layer = model.encoder.layers[-1]
         head_attn = layer.attention_map
         attn_map = head_attn.mean(axis=0, keepdim=True).squeeze(0).cpu()
-        num_tokens = len(attn_map)-576
+        num_tokens = len(attn_map) - 576
         encoder_idx = list(range(num_tokens))
 
         for i in range(num_tokens):
