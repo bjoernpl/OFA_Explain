@@ -130,6 +130,9 @@ class ExplanationGenerator:
         return t
 
     def explain(self, image, question, encoder_path, decoder_path):
+        new_shape = 500 * image.size / np.max(image.size)
+        image = image.resize(new_shape, Image.ANTIALIAS)
+
         sample = self.construct_sample(image, question)
         sample = utils.move_to_cuda(sample) if self.use_cuda else sample
         sample = utils.apply_to_sample(self.apply_half, sample) if self.use_fp16 else sample

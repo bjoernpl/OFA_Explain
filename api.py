@@ -20,7 +20,7 @@ origins = [
     "https://127.0.0.1",
     "http://127.0.0.1:8000",
     "https://127.0.0.1:8000",
-    "https://explainable-ofa.ml/"
+    "https://explainable-ofa.ml"
 ]
 
 app.add_middleware(
@@ -52,6 +52,7 @@ async def ProcessImage(file: UploadFile, question: str = Form()):
 
     image_data = await file.read()
     image = Image.open(io.BytesIO(image_data))
+
     encoder_path = os.path.join(base_dir, request_code, "encoder")
     os.makedirs(encoder_path, exist_ok=True)
     decoder_path = os.path.join(base_dir, request_code, "decoder")
