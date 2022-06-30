@@ -1,6 +1,7 @@
-FROM nvcr.io/nvidia/pytorch:22.06-py3
+FROM python:3.9-buster
 
 RUN apt-get update
+RUN DEBIAN_FRONTEND=noninteractive TZ=Europe/Berlin apt-get -y install tzdata
 RUN apt-get install ffmpeg libsm6 libxext6 -y
 
 WORKDIR /usr/src/app
