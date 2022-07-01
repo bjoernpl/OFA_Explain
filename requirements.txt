@@ -13,5 +13,5 @@ fastapi
 matplotlib
 python-multipart
 webp
-pillow
+pillow==9.1.1
 uvicorn[standard]
