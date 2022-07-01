@@ -71,7 +71,7 @@ async def ProcessImage(file: UploadFile, question: str = Form()):
     return response
 
 
-@app.get("/response/{enc_or_dec}/{idx_token}")
+@app.get("/response/{enc_or_dec}/{idx_token}.jpg")
 async def ResultsImage(enc_or_dec: str, idx_token: int, request_code: str):
     if not request_code:
         raise HTTPException(status_code=404, detail="No request code")
