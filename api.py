@@ -71,13 +71,13 @@ async def ProcessImage(file: UploadFile, question: str = Form()):
     return response
 
 
-@app.get("/response/{enc_or_dec}/{idx_token}.png")
+@app.get("/response/{enc_or_dec}/{idx_token}")
 async def ResultsImage(enc_or_dec: str, idx_token: int, request_code: str):
     if not request_code:
         raise HTTPException(status_code=404, detail="No request code")
     if enc_or_dec not in ["encoder", "decoder"]:
         raise HTTPException(status_code=404, detail="Item not found")
-    path = os.path.join(base_dir, request_code, enc_or_dec, str(idx_token) + ".png")
+    path = os.path.join(base_dir, request_code, enc_or_dec, str(idx_token) + ".jpg")
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="Item not found")
     return FileResponse(path=path)
