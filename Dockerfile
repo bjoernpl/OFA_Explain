@@ -2,7 +2,7 @@ FROM nvcr.io/nvidia/pytorch:22.06-py3
 
 RUN apt-get update
 RUN DEBIAN_FRONTEND=noninteractive TZ=Europe/Berlin apt-get -y install tzdata
-RUN apt-get install ffmpeg libsm6 libxext6 -y
+RUN apt-get install ffmpeg libsm6 libxext6 libwebp libwebp-dev -y
 
 WORKDIR /usr/src/app
 

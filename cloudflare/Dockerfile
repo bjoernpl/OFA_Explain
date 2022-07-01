@@ -1,7 +1,7 @@
 FROM ubuntu
 
 RUN apt-get -y update && apt-get -y install curl
-RUN curl -L https://github.com/cloudflare/cloudflared/releases/download/2022.4.1/cloudflared-linux-arm64 -o cloudflared
+RUN curl -L https://github.com/cloudflare/cloudflared/releases/download/2022.6.3/cloudflared-linux-$(dpkg --print-architecture) -o cloudflared
 RUN chmod +x /cloudflared
 
 
