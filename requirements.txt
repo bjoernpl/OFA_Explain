@@ -12,5 +12,6 @@ rouge_score
 fastapi
 matplotlib
 python-multipart
+webp
 pillow
 uvicorn[standard]

@@ -8,7 +8,6 @@ WORKDIR /usr/src/app
 
 COPY requirements.txt ./
 COPY fairseq ./fairseq
-RUN pip install webp pillow
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install opencv-python==4.5.5.64
 
