@@ -35,7 +35,8 @@ def eval_vqa_gen(task, generator, models, sample, **kwargs):
         results.append({
             "question_id": sample_id,
             "answer": detok_hypo_str.strip(),
-            "attention": hypos[i][0]["attention"]
+            "attention": hypos[i][0]["attention"],
+            "tokens": hypos[i][0]["tokens"]
         })
     scores = [ref_dict.get(result['answer'], 0) for ref_dict, result in zip(sample['ref_dict'], results)]
     return results, scores
