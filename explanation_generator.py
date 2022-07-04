@@ -122,11 +122,6 @@ class ExplanationGenerator:
         return sample
 
     def explain(self, image: Image, question, encoder_path, decoder_path):
-        image_max = np.max(image.size)
-        if image_max > 400:
-            new_shape = (400 * np.array(image.size) / image_max).astype(int)
-            image = image.resize(new_shape, Image.ANTIALIAS)
-
         sample = self.construct_sample(image, question)
         sample = utils.move_to_cuda(sample) if self.use_cuda else sample
         sample = utils.apply_to_sample(apply_half, sample) if self.use_fp16 else sample
@@ -179,6 +174,16 @@ class ExplanationGenerator:
     @staticmethod
     def generate_heatmap(original_image, heat_map, opacity=0.3, cmap=cv2.COLORMAP_VIRIDIS,
                          save_path=None):
+
+        # Rescale output to max 500px
+        long_side = np.max(original_image.shape)
+        im_size = 500
+        if long_side > im_size:
+            x_size = np.int(original_image.shape[0] * im_size / long_side)
+            y_size = np.int(original_image.shape[1] * im_size / long_side)
+            heat_map = cv2.resize(heat_map, (y_size, x_size))
+            original_image = cv2.resize(original_image, (y_size, x_size))
+
         max_value = heat_map.max()
         min_value = heat_map.min()
         heat_map = (heat_map - min_value) / (max_value - min_value)
