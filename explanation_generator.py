@@ -122,15 +122,20 @@ class ExplanationGenerator:
         return sample
 
     def explain(self, image: Image, question, encoder_path, decoder_path):
+        image_max = np.max(image.size)
+        if image_max > 400:
+            new_shape = (400 * np.array(image.size) / image_max).astype(int)
+            image = image.resize(new_shape, Image.ANTIALIAS)
+
         sample = self.construct_sample(image, question)
         sample = utils.move_to_cuda(sample) if self.use_cuda else sample
         sample = utils.apply_to_sample(apply_half, sample) if self.use_fp16 else sample
 
-
         result, scores = zero_shot_step(self.task, self.generator, self.models, sample)
         answer = result[0]["answer"]
 
-        encoder_idx = self.encoder_explanation(image, encoder_path)
+        # self.encoder_explanation(image, encoder_path)
+        encoder_idx = []
         decoder_idx = self.decoder_explanation(image, result, decoder_path)
 
         return answer, encoder_idx, decoder_idx
