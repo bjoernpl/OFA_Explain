@@ -119,22 +119,15 @@ class ExplanationGenerator:
         sample = utils.move_to_cuda(sample) if self.use_cuda else sample
 
         result, scores = zero_shot_step(self.task, self.generator, self.models, sample)
-        result_attn = result[0]["attention"]
         answer = result[0]["answer"]
 
-        decoder_idx = list(range(len(result_attn.T.cpu()[:-1])))
-        for i, attn_map in enumerate(result_attn.T.cpu()[:-1]):
-            num_input_tokens = len(attn_map) - 576
-            image_attn = attn_map[:-num_input_tokens]
-            image_attn = F.softmax(image_attn)
-            heatmap = torch.reshape(image_attn, (1, 1, 24, 24))
-            heatmap_img = F.interpolate(heatmap, image.size[::-1], mode='bicubic')
-            heatmap_img = heatmap_img.squeeze(0).squeeze(0).numpy()
-            path = os.path.join(decoder_path, str(i) + ".jpg")
-            self.generate_heatmap(np.array(image), heatmap_img, opacity=0.7, save_path=path)
+        encoder_idx = self.encoder_explanation(image, encoder_path)
+        decoder_idx = self.decoder_explanation(image, result, decoder_path)
 
+        return answer, encoder_idx, decoder_idx
+
+    def encoder_explanation(self, image, encoder_path):
         model = self.models[0]
-
         layer = model.encoder.layers[-1]
         head_attn = layer.attention_map
         attn_map = head_attn.mean(axis=0, keepdim=True).squeeze(0).cpu()
@@ -147,14 +140,27 @@ class ExplanationGenerator:
             # self_attn = F.softmax(self_attn)
             # self_attn -= self_attn.min()
             # self_attn /= self_attn.max()
-
             image_attn = F.softmax(image_attn)
             heatmap = torch.reshape(image_attn, (1, 1, 24, 24))
             img_sized_heatmap = F.interpolate(heatmap, image.size[::-1], mode='bicubic').squeeze(0).squeeze(0)
             path = os.path.join(encoder_path, str(i) + ".jpg")
             self.generate_heatmap(np.array(image), img_sized_heatmap, opacity=0.7, save_path=path)
+        return encoder_idx
 
-        return answer, encoder_idx, decoder_idx
+    def decoder_explanation(self, image, result, decoder_path):
+        result_attn = result[0]["attention"]
+        decoder_idx = list(range(len(result_attn.T.cpu()[:-1])))
+        for i, attn_map in enumerate(result_attn.T.cpu()[:-1]):
+            num_input_tokens = len(attn_map) - 576
+            image_attn = attn_map[:-num_input_tokens]
+            image_attn = F.softmax(image_attn)
+            heatmap = torch.reshape(image_attn, (1, 1, 24, 24))
+            heatmap_img = F.interpolate(heatmap, image.size[::-1], mode='bicubic')
+            heatmap_img = heatmap_img.squeeze(0).squeeze(0).numpy()
+            path = os.path.join(decoder_path, str(i) + ".jpg")
+            self.generate_heatmap(np.array(image), heatmap_img, opacity=0.7, save_path=path)
+        return decoder_idx
+
 
     @staticmethod
     def generate_heatmap(original_image, heat_map, opacity=0.3, cmap=cv2.COLORMAP_VIRIDIS,
