@@ -154,7 +154,7 @@ class GeneratorOurs:
         # impact of text on images
         self.R_i_t = torch.zeros(image_bboxes, text_tokens).to(model.device)
 
-
+        indices = self.output_indices()
         if index is None:
             index = np.argmax(output.cpu().data.numpy(), axis=-1)
 
@@ -214,6 +214,9 @@ class GeneratorOurs:
         # disregard the [CLS] token itself
         self.R_t_t[0,0] = 0
         return self.R_t_t, self.R_t_i
+
+    def output_indices(self, result):
+        text = result[0]["answer"]
 
 
 
