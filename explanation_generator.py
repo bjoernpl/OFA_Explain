@@ -165,8 +165,8 @@ class ExplanationGenerator:
     @staticmethod
     def generate_heatmap(original_image, heat_map, opacity=0.3, cmap=cv2.COLORMAP_VIRIDIS,
                          save_path=None):
-        max_value = np.max(heat_map)
-        min_value = np.min(heat_map)
+        max_value = heat_map.max()
+        min_value = heat_map.min()
         heat_map = (heat_map - min_value) / (max_value - min_value)
         heat_map = np.array(heat_map * 255, dtype=np.uint8)
         heat_map = cv2.applyColorMap(heat_map, cmap)
