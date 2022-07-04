@@ -31,12 +31,17 @@ def pre_question(question, max_ques_words):
         question = ' '.join(question_words[:max_ques_words])
     return question
 
+def apply_half(t):
+    if t.dtype is torch.float32:
+        return t.to(dtype=torch.half)
+    return t
 
 class ExplanationGenerator:
     def __init__(self):
 
         tasks.register_task('vqa_gen', VqaGenTask)
         self.use_cuda = torch.cuda.is_available()
+        self.use_fp16 = True
 
         parser = options.get_generation_parser()
         input_args = ["", "--task=vqa_gen", "--beam=100", "--unnormalized", "--path=checkpoints/ofa_large_384.pt",
@@ -53,6 +58,8 @@ class ExplanationGenerator:
         # Move models to GPU
         for model in self.models:
             model.eval()
+            if self.use_fp16:
+                model.half()
             if self.use_cuda and not self.cfg.distributed_training.pipeline_model_parallel:
                 model.cuda()
             model.prepare_for_inference_(self.cfg)
@@ -117,6 +124,8 @@ class ExplanationGenerator:
     def explain(self, image: Image, question, encoder_path, decoder_path):
         sample = self.construct_sample(image, question)
         sample = utils.move_to_cuda(sample) if self.use_cuda else sample
+        sample = utils.apply_to_sample(apply_half, sample) if self.use_fp16 else sample
+
 
         result, scores = zero_shot_step(self.task, self.generator, self.models, sample)
         answer = result[0]["answer"]
