@@ -170,6 +170,9 @@ class ExplanationGenerator:
         heat_map = (heat_map - min_value) / (max_value - min_value)
         heat_map = np.array(heat_map * 255, dtype=np.uint8)
         heat_map = cv2.applyColorMap(heat_map, cmap)
+        if original_image.shape[-1] == 4:  # RGBA
+            adim = np.ones((heat_map.shape[0], heat_map.shape[1], 1), dtype=np.uint8) * 255
+            heat_map = np.concatenate([heat_map, adim], axis=2)
 
         outImage = cv2.addWeighted(heat_map, opacity, original_image, 1 - opacity, 0)
 
