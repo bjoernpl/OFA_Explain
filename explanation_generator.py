@@ -1,29 +1,26 @@
 import os
 import re
 
+import cv2
 import numpy as np
 import torch
 from PIL import Image
-from matplotlib import pyplot as plt
 from torch.nn import functional as F
+from torchvision import transforms
 
 from fairseq import checkpoint_utils
 from fairseq import options
 from fairseq import utils, tasks
 from fairseq.dataclass.utils import convert_namespace_to_omegaconf
-from tasks.mm_tasks.caption import CaptionTask
+from tasks.mm_tasks.vqa_gen import VqaGenTask
 from utils.zero_shot_utils import zero_shot_step
 
 
 class ExplanationGenerator:
     def __init__(self):
 
-        # Register caption task
-        tasks.register_task('caption', CaptionTask)
-
-        # turn on cuda if GPU is available
+        tasks.register_task('vqa_gen', VqaGenTask)
         self.use_cuda = torch.cuda.is_available()
-        # use fp16 only when GPU is available
         self.use_fp16 = False
 
         parser = options.get_generation_parser()
@@ -53,7 +50,6 @@ class ExplanationGenerator:
         self.generator = self.task.build_generator(self.models, self.cfg.generation)
 
         # Image transform
-        from torchvision import transforms
         mean = [0.5, 0.5, 0.5]
         std = [0.5, 0.5, 0.5]
 
@@ -130,11 +126,6 @@ class ExplanationGenerator:
         return t
 
     def explain(self, image: Image, question, encoder_path, decoder_path):
-        image_max = np.max(image.size)
-        if image_max > 500:
-            new_shape = (500 * np.array(image.size) / image_max).astype(int)
-            image = image.resize(new_shape, Image.ANTIALIAS)
-
         sample = self.construct_sample(image, question)
         sample = utils.move_to_cuda(sample) if self.use_cuda else sample
         sample = utils.apply_to_sample(self.apply_half, sample) if self.use_fp16 else sample
@@ -151,15 +142,8 @@ class ExplanationGenerator:
             heatmap = torch.reshape(image_attn, (1, 1, 24, 24))
             heatmap_img = F.interpolate(heatmap, image.size[::-1], mode='bicubic')
             heatmap_img = heatmap_img.squeeze(0).squeeze(0).numpy()
-            # heatmap_img -= heatmap_img.min()
-            # heatmap_img /= heatmap_img.max()
-
-            plt.imshow(image)
-            plt.imshow(heatmap_img, zorder=1, alpha=0.7)
-            plt.axis("off")
             path = os.path.join(decoder_path, str(i) + ".jpg")
-            plt.savefig(path, bbox_inches='tight', pad_inches=0)
-            plt.clf()
+            self.generate_heatmap(np.array(image), heatmap_img, opacity=0.7, save_path=path)
 
         model = self.models[0]
 
@@ -169,21 +153,31 @@ class ExplanationGenerator:
         num_tokens = len(attn_map) - 576
         encoder_idx = list(range(num_tokens))
 
-        # for i in range(num_tokens):
-        #     image_attn = attn_map[576 + i, :-num_tokens]
-        #     # self_attn = attn_map[576 + i, -num_tokens:]
-        #     # self_attn = F.softmax(self_attn)
-        #     # self_attn -= self_attn.min()
-        #     # self_attn /= self_attn.max()
-        #
-        #     image_attn = F.softmax(image_attn)
-        #     heatmap = torch.reshape(image_attn, (1, 1, 24, 24))
-        #     img_sized_heatmap = F.interpolate(heatmap, image.size[::-1], mode='bicubic')
-        #     plt.imshow(image)
-        #     plt.imshow(img_sized_heatmap.squeeze(0).squeeze(0), zorder=1, alpha=0.7)
-        #     plt.axis('off')
-        #     path = os.path.join(encoder_path, str(i) + ".jpg")
-        #     plt.savefig(path, bbox_inches='tight', pad_inches=0)
-        #     plt.clf()
+        for i in range(num_tokens):
+            image_attn = attn_map[576 + i, :-num_tokens]
+            # self_attn = attn_map[576 + i, -num_tokens:]
+            # self_attn = F.softmax(self_attn)
+            # self_attn -= self_attn.min()
+            # self_attn /= self_attn.max()
+
+            image_attn = F.softmax(image_attn)
+            heatmap = torch.reshape(image_attn, (1, 1, 24, 24))
+            img_sized_heatmap = F.interpolate(heatmap, image.size[::-1], mode='bicubic').squeeze(0).squeeze(0)
+            path = os.path.join(encoder_path, str(i) + ".jpg")
+            self.generate_heatmap(np.array(image), img_sized_heatmap, opacity=0.7, save_path=path)
 
         return answer, encoder_idx, decoder_idx
+
+    @staticmethod
+    def generate_heatmap(original_image, heat_map, opacity=0.3, cmap=cv2.COLORMAP_VIRIDIS,
+                         save_path=None):
+        max_value = np.max(heat_map)
+        min_value = np.min(heat_map)
+        heat_map = (heat_map - min_value) / (max_value - min_value)
+        heat_map = np.array(heat_map * 255, dtype=np.uint8)
+        heat_map = cv2.applyColorMap(heat_map, cmap)
+
+        outImage = cv2.addWeighted(heat_map, opacity, original_image, 1 - opacity, 0)
+
+        if save_path is not None:
+            cv2.imwrite(save_path, outImage)
