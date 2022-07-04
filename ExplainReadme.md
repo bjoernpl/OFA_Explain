@@ -28,14 +28,14 @@ The inference API is available in [this repository](https://github.com/bjoernpl/
 with PyTorch and the API is built with [FastAPI](https://fastapi.tiangolo.com/) and run via [Uvicorn](https://www.uvicorn.org/). 
 
 To install simply clone the repo, run 
-```
+``
 pip install -r requirements.txt
-``` 
+``
 to install all requirements, and
 start the uvicorn server with 
-```
+``
 python -m uvicorn api:app --reload --host 0.0.0.0
-```
+``
 
 ### Contact
 This project was done as part of a university seminar by [Lukas Braach](https://github.com/lukasbraach) and
