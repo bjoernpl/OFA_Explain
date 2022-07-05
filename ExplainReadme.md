@@ -40,3 +40,5 @@ python -m uvicorn api:app --reload --host 0.0.0.0
 ### Contact
 This project was done as part of a university seminar by [Lukas Braach](https://github.com/lukasbraach) and
 [Björn Plüster](https://github.com/bjoernpl). For any questions, feel free to contact us. Enjoy!
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/C0C5DMYIN)
