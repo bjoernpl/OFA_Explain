@@ -20,7 +20,8 @@ origins = [
     "https://127.0.0.1",
     "http://127.0.0.1:8000",
     "https://127.0.0.1:8000",
-    "https://explainable-ofa.ml"
+    "https://explainable-ofa.ml",
+    "https://explainable-ofa.pages.dev"
 ]
 
 app.add_middleware(
