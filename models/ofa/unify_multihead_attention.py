@@ -393,6 +393,8 @@ class MultiheadAttention(nn.Module):
         attn_probs = self.dropout_module(attn_weights)
 
         self.save_attention_map(attn_probs)
+        attn_probs.requires_grad_(True)
+        attn_probs.register_hook(self.save_attn_gradients)
 
         assert v is not None
         attn = torch.bmm(attn_probs, v)
