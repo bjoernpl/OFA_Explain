@@ -18,16 +18,18 @@ def compute_rollout_attention(all_layer_matrices, start_layer=0):
 
 # rule 5 from paper
 def avg_heads(cam, grad):
-    cam = cam.reshape(-1, cam.shape[-2], cam.shape[-1])
-    grad = grad.reshape(-1, grad.shape[-2], grad.shape[-1])
-    cam = grad * cam
-    cam = cam.clamp(min=0).mean(dim=0)
+    # cam = cam.reshape(-1, cam.shape[-2], cam.shape[-1])
+    # grad = grad.reshape(-1, grad.shape[-2], grad.shape[-1])
+    # cam = grad * cam
+    # cam = cam.clamp(min=0).mean(dim=0)
+    for i, val in enumerate(grad):
+        cam[i] *= val
     return cam
 
 # rules 6 + 7 from paper
 def apply_self_attention_rules(R_sq, cam_ss):
     R_addition = torch.matmul(cam_ss, R_sq)
-    return R_addition
+    return torch.mean(R_addition, dim=0)
 
 # rules 10 + 11 from paper
 def apply_mm_attention_rules(R_ss, R_qq, R_qs, cam_sq, apply_normalization=True, apply_self_in_rule_10=True):
@@ -63,7 +65,8 @@ class GeneratorOurs:
 
     def handle_self_attention(self, blocks):
         for blk in blocks:
-            grad = blk.get_attention_gradients().detach()
+            #grad = blk.get_attention_gradients().detach()
+            grad = blk.self_attn.c_attn
             cam = blk.get_attention_map().detach()
             cam = avg_heads(cam, grad)
             R_self_add = apply_self_attention_rules(self.R_self, cam)
@@ -123,40 +126,42 @@ class GeneratorOurs:
         # one_hot.backward(retain_graph=True)
         # if self.use_lrp:
         #     model.relprop(torch.tensor(one_hot_vector).to(output.device), **kwargs)
+        model.zero_grad()
 
         # language self attention
         blocks = model.encoder.layers
         self.handle_self_attention(blocks)
-
+        return self.R_self, result
         # cross attn layers
-        blocks = model.encoder.x_layers
-        for i, blk in enumerate(blocks):
-            # in the last cross attention module, only the text cross modal
-            # attention has an impact on the CLS token, since it's the first
-            # token in the language tokens
-            if i == len(blocks) - 1:
-                break
-            # cross attn- first for language then for image
-            R_cross_addition = self.handle_co_attn(blk)
-            self.R
+        # blocks = model.encoder.x_layers
+        # for i, blk in enumerate(blocks):
+        #     # in the last cross attention module, only the text cross modal
+        #     # attention has an impact on the CLS token, since it's the first
+        #     # token in the language tokens
+        #     if i == len(blocks) - 1:
+        #         break
+        #     # cross attn- first for language then for image
+        #     R_cross_addition = self.handle_co_attn(blk)
+        #     self.R
+        #
+        #     # self attention
+        #     self.handle_co_attn_self(blk)
+        #
+        #
+        # # take care of last cross attention layer- only text
+        # blk = model.lxmert.encoder.x_layers[-1]
+        # # cross attn- first for language then for image
+        # R_t_i_addition, R_t_t_addition = self.handle_co_attn_lang(blk)
+        # self.R_t_i += R_t_i_addition
+        # self.R_t_t += R_t_t_addition
+        #
+        # # language self attention
+        # self.handle_co_attn_self_lang(blk)
+        #
+        # # disregard the [CLS] token itself
+        # self.R_t_t[0,0] = 0
+        # return self.R_t_t, self.R_t_i
 
-            # self attention
-            self.handle_co_attn_self(blk)
-
-
-        # take care of last cross attention layer- only text
-        blk = model.lxmert.encoder.x_layers[-1]
-        # cross attn- first for language then for image
-        R_t_i_addition, R_t_t_addition = self.handle_co_attn_lang(blk)
-        self.R_t_i += R_t_i_addition
-        self.R_t_t += R_t_t_addition
-
-        # language self attention
-        self.handle_co_attn_self_lang(blk)
-
-        # disregard the [CLS] token itself
-        self.R_t_t[0,0] = 0
-        return self.R_t_t, self.R_t_i
 
     def output_indices(self, result):
         text = result[0]["answer"]
