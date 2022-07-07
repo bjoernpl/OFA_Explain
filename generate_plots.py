@@ -22,9 +22,10 @@ def run():
     num_tokens = int(generator.text_tokens)-2
     num_patches = int(generator.image_patches)
     fig, axs = plt.subplots(1, num_tokens + 2, figsize=(5 * (num_tokens + 2), 5))
+    fontsize = 26
     axs[0].imshow(image)
     axs[0].axis('off')
-    axs[0].set_title("Input image")
+    axs[0].set_title("Input image", fontsize=fontsize)
 
     tokens = sample["net_input"]["src_tokens"].squeeze().cpu().numpy()
     print(tokens)
@@ -41,7 +42,7 @@ def run():
         axs[-1].imshow(image)
         axs[-1].imshow(heatmap_img, alpha=0.7)
         axs[-1].axis('off')
-        axs[-1].set_title(answer.split()[0])
+        axs[-1].set_title(f"Answer: {answer.split()[0]}", fontsize=fontsize)
 
     for i, token in enumerate(tokens[1:-1]):
         attn_map = self_attn_map.squeeze(0).detach().cpu()
@@ -57,7 +58,7 @@ def run():
         axs[i + 1].imshow(image)
         axs[i + 1].imshow(heatmap_img, alpha=0.7)
         axs[i + 1].axis('off')
-        axs[i + 1].set_title(question.split()[i])
+        axs[i + 1].set_title(question.split()[i], fontsize=fontsize)
     plt.tight_layout()
     plt.savefig("./output_plot.pdf")
     plt.show()
