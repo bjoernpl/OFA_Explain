@@ -66,8 +66,8 @@ class GeneratorOurs:
     def handle_self_attention(self, blocks):
         for blk in blocks:
             #grad = blk.get_attention_gradients().detach()
-            grad = blk.self_attn.c_attn
-            cam = blk.get_attention_map().detach()
+            grad = blk.self_attn.c_attn.cpu().detach()
+            cam = blk.get_attention_map().cpu().detach()
             cam = avg_heads(cam, grad)
             R_self_add = apply_self_attention_rules(self.R_self, cam)
             self.R_self += R_self_add
@@ -103,7 +103,7 @@ class GeneratorOurs:
         self.input_length = int(self.image_patches + self.text_tokens)
 
         # text self attention matrix
-        self.R_self = torch.eye(self.input_length, self.input_length).to("cuda:0")
+        self.R_self = torch.eye(self.input_length, self.input_length)
         # # image self attention matrix
         # self.R_i_i = torch.eye(image_patches, image_patches).to(model.device)
         # # impact of images on text
