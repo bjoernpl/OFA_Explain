@@ -8,6 +8,7 @@ from PIL import Image
 from torch.nn import functional as F
 from torchvision import transforms
 
+from OfaExplanationGenerator import GeneratorOurs
 from fairseq import checkpoint_utils
 from fairseq import options
 from fairseq import utils, tasks
@@ -39,9 +40,11 @@ def apply_half(t):
 class ExplanationGenerator:
     def __init__(self):
 
+        self.output_path = None
+
         tasks.register_task('vqa_gen', VqaGenTask)
         self.use_cuda = torch.cuda.is_available()
-        self.use_fp16 = True
+        self.use_fp16 = False
 
         parser = options.get_generation_parser()
         input_args = ["", "--task=vqa_gen", "--beam=100", "--unnormalized", "--path=checkpoints/ofa_large_384.pt",
@@ -84,6 +87,8 @@ class ExplanationGenerator:
         self.eos_item = torch.LongTensor([self.task.src_dict.eos()])
         self.pad_idx = self.task.src_dict.pad()
 
+        self.explainer = GeneratorOurs(self.models, self.task, self.generator)
+
     def encode_text(self, text, length=None, append_bos=False, append_eos=False):
         s = self.task.tgt_dict.encode_line(
             line=self.task.bpe.encode(text),
@@ -121,54 +126,80 @@ class ExplanationGenerator:
         }
         return sample
 
-    def explain(self, image: Image, question, encoder_path, decoder_path):
+    def explain(self, image: Image, question, output_path):
+        """
+        Generates visual explanations for given image and question, and saves
+        them at the given output path. Encoder explanations are indices 0-num_tokens
+        and decoders are num_tokens-end.
+        """
+        self.output_path = output_path
+
         sample = self.construct_sample(image, question)
         sample = utils.move_to_cuda(sample) if self.use_cuda else sample
         sample = utils.apply_to_sample(apply_half, sample) if self.use_fp16 else sample
 
-        result, scores = zero_shot_step(self.task, self.generator, self.models, sample)
+        self_attn_map, result = self.explainer.generate_ours(sample)
         answer = result[0]["answer"]
 
         # self.encoder_explanation(image, encoder_path)
-        encoder_idx = []
-        decoder_idx = self.decoder_explanation(image, result, decoder_path)
+        self.num_tokens = int(self.explainer.text_tokens) - 2
+        self.tokens = sample["net_input"]["src_tokens"].squeeze().cpu().numpy()
+        self.num_patches = int(self.explainer.image_patches)
+        encoder_idx, encoder_txt_attns = self.encoder_explanation(image, self_attn_map)
+        decoder_idx, decoder_txt_attns = self.decoder_explanation(image, result)
+        txt_attns = np.append(encoder_txt_attns, decoder_txt_attns, axis=0)
+        print(txt_attns.shape)
 
-        return answer, encoder_idx, decoder_idx
+        return {
+            "answer": answer,
+            "encoder_indices": encoder_idx,
+            "decoder_indices": decoder_idx,
+            "txt_attns": txt_attns.tolist()
+        }
 
-    def encoder_explanation(self, image, encoder_path):
-        model = self.models[0]
-        layer = model.encoder.layers[-1]
-        head_attn = layer.attention_map
-        attn_map = head_attn.mean(axis=0, keepdim=True).squeeze(0).cpu()
-        num_tokens = len(attn_map) - 576
-        encoder_idx = list(range(num_tokens))
+    def encoder_explanation(self, image, self_attn_map):
+        """
+        Generates encoder attention heatmaps. Saves them to given output path with indices
+        starting at 0. Returns indices corresponding to numbering.
+        """
+        txt_attns = np.zeros((self.num_tokens, self.num_tokens))
+        encoder_idx = list(range(self.num_tokens))
+        for i, token in enumerate(self.tokens[1:-1]):
+            attn_map = self_attn_map.squeeze(0).detach().cpu()
+            text_attn = attn_map.T[self.num_patches + i + 1, -self.num_tokens-1:-1]
+            text_attn /= text_attn.max()
+            txt_attns[i] = text_attn.numpy()
 
-        for i in range(num_tokens):
-            image_attn = attn_map[576 + i, :-num_tokens]
-            # self_attn = attn_map[576 + i, -num_tokens:]
-            # self_attn = F.softmax(self_attn)
-            # self_attn -= self_attn.min()
-            # self_attn /= self_attn.max()
-            image_attn = F.softmax(image_attn)
+            image_attn = attn_map.T[self.num_patches + i + 1, :-self.num_tokens - 2]
             heatmap = torch.reshape(image_attn, (1, 1, 24, 24))
-            img_sized_heatmap = F.interpolate(heatmap, image.size[::-1], mode='bicubic').squeeze(0).squeeze(0)
-            path = os.path.join(encoder_path, str(i) + ".jpg")
-            self.generate_heatmap(np.array(image), img_sized_heatmap, opacity=0.7, save_path=path)
-        return encoder_idx
+            heatmap_img = F.interpolate(heatmap, image.size[::-1], mode='bicubic')
+            heatmap_img = heatmap_img.squeeze(0).squeeze(0).numpy()
+            path = os.path.join(self.output_path, str(i) + ".jpg")
+            self.generate_heatmap(np.array(image), heatmap_img, opacity=0.7, save_path=path)
+        return encoder_idx, txt_attns
 
-    def decoder_explanation(self, image, result, decoder_path):
-        result_attn = result[0]["attention"]
-        decoder_idx = list(range(len(result_attn.T.cpu()[:-1])))
-        for i, attn_map in enumerate(result_attn.T.cpu()[:-1]):
-            num_input_tokens = len(attn_map) - 576
+    def decoder_explanation(self, image, result):
+        """
+        Generates heatmaps for decoder output. Saves them to given output path with numbering
+        starting at self.num_tokens. Returns indices corresponding to numbering.
+        """
+        result_attn = result[0]["attention"].T.cpu()[:-1]
+        decoder_idx = list(range(self.num_tokens, self.num_tokens + len(result_attn)))
+        txt_attns = np.zeros((len(result_attn), self.num_tokens))
+        for i, attn_map in enumerate(result_attn):
+            text_attn = attn_map[-self.num_tokens-1:-1]
+            text_attn /= text_attn.max()
+            txt_attns[i] = text_attn.numpy()
+
+            num_input_tokens = len(attn_map) - self.num_patches
             image_attn = attn_map[:-num_input_tokens]
             image_attn = F.softmax(image_attn)
             heatmap = torch.reshape(image_attn, (1, 1, 24, 24))
             heatmap_img = F.interpolate(heatmap, image.size[::-1], mode='bicubic')
             heatmap_img = heatmap_img.squeeze(0).squeeze(0).numpy()
-            path = os.path.join(decoder_path, str(i) + ".jpg")
+            path = os.path.join(self.output_path, str(i+self.num_tokens) + ".jpg")
             self.generate_heatmap(np.array(image), heatmap_img, opacity=0.7, save_path=path)
-        return decoder_idx
+        return decoder_idx, txt_attns
 
 
     @staticmethod

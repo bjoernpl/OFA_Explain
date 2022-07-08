@@ -54,31 +54,21 @@ async def ProcessImage(file: UploadFile, question: str = Form()):
     image_data = await file.read()
     image = Image.open(io.BytesIO(image_data))
 
-    encoder_path = os.path.join(base_dir, request_code, "encoder")
-    os.makedirs(encoder_path, exist_ok=True)
-    decoder_path = os.path.join(base_dir, request_code, "decoder")
-    os.makedirs(decoder_path, exist_ok=True)
+    output_path = os.path.join(base_dir, request_code)
+    os.makedirs(output_path, exist_ok=True)
 
-    answer, encoder_indices, decoder_indices = explanation_generator.explain(
-        image, question, encoder_path, decoder_path
+    response = explanation_generator.explain(
+        image, question, output_path
     )
-    response = {
-        "answer": answer,
-        "encoder_indices": encoder_indices,
-        "decoder_indices": decoder_indices,
-        "request_code": request_code
-    }
-
+    response["request_code"] = request_code
     return response
 
 
-@app.get("/response/{enc_or_dec}/{idx_token}.jpg")
-async def ResultsImage(enc_or_dec: str, idx_token: int, request_code: str):
+@app.get("/response/{idx_token}.jpg")
+async def ResultsImage(idx_token: int, request_code: str):
     if not request_code:
         raise HTTPException(status_code=404, detail="No request code")
-    if enc_or_dec not in ["encoder", "decoder"]:
-        raise HTTPException(status_code=404, detail="Item not found")
-    path = os.path.join(base_dir, request_code, enc_or_dec, str(idx_token) + ".jpg")
+    path = os.path.join(base_dir, request_code, str(idx_token) + ".jpg")
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="Item not found")
     return FileResponse(path=path)

@@ -57,8 +57,8 @@ def handle_residual(orig_self_attention):
     return self_attention
 
 class GeneratorOurs:
-    def __init__(self, model, task, generator, save_visualization=False):
-        self.model = model
+    def __init__(self, models, task, generator, save_visualization=False):
+        self.models = models
         self.save_visualization = save_visualization
         self.task = task
         self.generator = generator
@@ -94,9 +94,8 @@ class GeneratorOurs:
         self.normalize_self_attention = normalize_self_attention
         self.apply_self_in_rule_10 = apply_self_in_rule_10
         kwargs = {"alpha": 1}
-        result, scores = zero_shot_step(self.task, self.generator, [self.model], input)
+        result, scores = zero_shot_step(self.task, self.generator, self.models, input)
         # output = self.model_usage.forward(input).question_answering_score
-        model = self.model
 
         # initialize relevancy matrices
         self.text_tokens = input["net_input"]["src_lengths"]
@@ -126,11 +125,9 @@ class GeneratorOurs:
         # one_hot.backward(retain_graph=True)
         # if self.use_lrp:
         #     model.relprop(torch.tensor(one_hot_vector).to(output.device), **kwargs)
-        model.zero_grad()
 
         # language self attention
-        blocks = model.encoder.layers
-        self.handle_self_attention(blocks)
+        self.handle_self_attention(self.models[0].encoder.layers)
         return self.R_self, result
         # cross attn layers
         # blocks = model.encoder.x_layers
