@@ -87,9 +87,12 @@ class VqaGenXConfig(OFAConfig):
 @register_task("vqa_gen_x", dataclass=VqaGenXConfig)
 class VqaGenXTask(OFATask):
     def __init__(self, cfg: VqaGenXConfig, src_dict, tgt_dict):
+        expl_token = "<expl>"
+        src_dict.add_symbol(expl_token)
+        tgt_dict.add_symbol(expl_token)
+        self.expl_token = expl_token
+        self.expl_token_item = src_dict.encode_line(expl_token, append_eos=False)
         super().__init__(cfg, src_dict, tgt_dict)
-        self.src_dict.add_symbol("<expl>")
-        self.tgt_dict.add_symbol("<expl>")
 
         self.ans2label_dict = None
         if self.cfg.ans2label_file is not None:
@@ -125,7 +128,8 @@ class VqaGenXTask(OFATask):
             add_object=self.cfg.add_object,
             constraint_trie=self.constraint_trie,
             imagenet_default_mean_and_std=self.cfg.imagenet_default_mean_and_std,
-            prompt_type=self.cfg.prompt_type
+            prompt_type=self.cfg.prompt_type,
+            explanation_separator=self.expl_token_item
         )
 
     def build_model(self, cfg):
