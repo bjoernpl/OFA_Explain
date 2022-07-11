@@ -56,19 +56,20 @@ Also we provide Colab notebooks for you to better perceive the procedures. Click
 
 
 # News 
+* 2022.7.7: Updated support of OFA on **huggingface transformers** (fixed bugs in forward, add sequence generator from Fairseq to ensure performance, etc.). Refer to the doc [transformers.md](transformers.md) and the branch `feature/add_transformers`. 
 * 2022.6.17: Released the pretrained checkpoint of **OFA-Huge**. To use it, set `--arch=ofa_huge` in the script.
 * 2022.5.15: OFA was accepted by **ICML 2022**
 * 2022.4.28: Add support of inference on **huggingface transformers**. For how to use it, please refer to the doc [transformers.md](transformers.md) and our [huggingface models](https://huggingface.co/OFA-Sys). 
 * 2022.4.16: Released lightweight pretrained models **OFA-Medium** (~93M params) and **OFA-Tiny** (~33M params) in [checkpoints.md](checkpoints.md). To use them, you just need to load the corresponding checkpoint and set `--arch=ofa_medium` or `--arch=ofa_tiny` in the scripts.
 * 2022.3.23: Added [Encouraging Loss](https://arxiv.org/pdf/2110.06537.pdf) as a feature. See [README_EncouragingLoss.md](README_EncouragingLoss.md). Leveraging this feature, OFA-Large has achieved improved results in both VQA (**test-std acc: 80.67**) and Image Classification (**test acc: 85.6**) recently.
-* 2022.3.21: Released codes for pretraining OFA.
-* 2022.3.18: Released the finetuned **OFA-Base** (~180M parameters) checkpoints and running scripts for vision & language tasks, including: **Caption (146.4 CIDEr), VQA (78.07 on test-std), SNLI-VE (89.3 on dev), RefCOCO (90.67 on testA), RefCOCO+ (87.15 on testA) and RefCOCOg (82.31 on test-u)** .
-* 2022.3.11: Released the finetuning & inference code/checkpoints for **Gigaword**.
-* 2022.3.08: Released the pretrained checkpoint of **OFA-Base** in [checkpoints.md](checkpoints.md). To use OFA-Base, you just need to load `ofa_base.pt` and change `--arch=ofa_large` to `--arch=ofa_base` in the training scripts.
 <details>
     <summary><b>More News</b></summary>
     <p>
         <ul>
+            <li>2022.3.21: Released codes for pretraining OFA.</li>
+            <li>2022.3.18: Released the finetuned <b>OFA-Base</b> (~180M parameters) checkpoints and running scripts for vision & language tasks, including: <b>Caption (146.4 CIDEr), VQA (78.07 on test-std), SNLI-VE (89.3 on dev), RefCOCO (90.67 on testA), RefCOCO+ (87.15 on testA) and RefCOCOg (82.31 on test-u)</b>.</li>
+            <li>2022.3.11: Released the finetuning & inference code/checkpoints for <b>Gigaword</b>.</li>
+            <li>2022.3.08: Released the pretrained checkpoint of <b>OFA-Base</b> in <a href="https://github.com/OFA-Sys/OFA/blob/main/checkpoints.md">checkpoints.md</a>. To use OFA-Base, you just need to load <code>ofa_base.pt</code> and change <code>--arch=ofa_large</code> to <code>--arch=ofa_base</code> in the training scripts.</li>
             <li>2022.3.07: Released the finetuning & inference code/checkpoints for <b>Image Classification</b>, which achieves <b>85.0</b> accuracy on ImageNet-1K, slightly better than reported in OFA paper.</li>
             <li>2022.3.04: Released the finetuning & inference code/checkpoints for <b>Text-to-Image Generation</b>.</li>
             <li>2022.3.03: Released the finetuning & inference code/checkpoints for <b>SNLI-VE</b> and <b>GLUE</b>.</li>
@@ -123,10 +124,10 @@ Below we demonstrate the results of OFAs on cross-modal understanding and genera
         <td>Metric</td><td>CIDEr</td><td>Acc.</td><td>Acc.</td><td colspan="3">Acc.</td>
     </tr>
     <tr align="center">
-        <td>OFA<sub>Tiny</sub></td><td>117.5 / 128.4</td><td>70.3 / 70.4</td><td>85.3 / 85.2</td><td>80.20 / 84.07 / 75.00</td><td>68.22 / 75.13 / 57.66</td><td>72.02 / 69.74</td>
+        <td>OFA<sub>Tiny</sub></td><td>119.0 / 128.7</td><td>70.3 / 70.4</td><td>85.3 / 85.2</td><td>80.20 / 84.07 / 75.00</td><td>68.22 / 75.13 / 57.66</td><td>72.02 / 69.74</td>
     </tr>
     <tr align="center">
-        <td>OFA<sub>Medium</sub></td><td>132.4 / 140.3</td><td>75.4 / 75.5</td><td>86.6 / 87.0</td><td>85.34 / 87.68 / 77.92</td><td>76.09 / 83.04 / 66.25</td><td>78.76 / 78.58</td>
+        <td>OFA<sub>Medium</sub></td><td>130.4 / 140.3</td><td>75.4 / 75.5</td><td>86.6 / 87.0</td><td>85.34 / 87.68 / 77.92</td><td>76.09 / 83.04 / 66.25</td><td>78.76 / 78.58</td>
     </tr>
     <tr align="center">
         <td>OFA<sub>Base</sub></td><td>138.2 / 146.7</td><td>78.0 / 78.1</td><td>89.3 / 89.2</td><td>88.48 / 90.67 / 83.30</td><td>81.39 / 87.15 / 74.29</td><td>82.29 / 82.31</td>
