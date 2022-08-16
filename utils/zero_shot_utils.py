@@ -33,13 +33,13 @@ def eval_vqa_gen(task, generator, models, sample, **kwargs):
     for i, sample_id in enumerate(sample["id"].tolist()):
         detok_hypo_str = decode_fn(hypos[i][0]["tokens"], task.tgt_dict, task.bpe, generator)
         results.append({"question_id": sample_id, "answer": detok_hypo_str.strip()})
-    scores = [ref_dict.get(result['answer'], 0) for ref_dict, result in zip(sample['ref_dict'], results)]
-    return results, scores
+    #scores = [ref_dict.get(result['answer'], 0) for ref_dict, result in zip(sample['ref_dict'], results)]
+    return results #, scores
 
 
 def zero_shot_step(task, generator, models, sample, **kwargs):
     generator.zero_shot = True
-    if task.cfg._name == 'vqa_gen':
+    if task.cfg._name in ['vqa_gen', 'vqa_gen_x']:
         generator.constraint_trie = None
         return eval_vqa_gen(task, generator, models, sample, **kwargs)
     else:
