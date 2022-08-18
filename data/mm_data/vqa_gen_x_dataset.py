@@ -72,6 +72,10 @@ def collate(samples, pad_idx, eos_idx):
     if samples[0].get("explanation", None) is not None:
         explanations = merge("explanation")
 
+    answers = None
+    if samples[0].get("answer", None) is not None:
+        answers = merge("answer")
+
     prev_output_tokens = None
     target = None
     if samples[0].get("target", None) is not None:
@@ -103,7 +107,8 @@ def collate(samples, pad_idx, eos_idx):
         "decoder_prompts": decoder_prompts,
         "target": target,
         "prefix_tokens": prefix_tokens,
-        "explanations": explanations
+        "explanations": explanations,
+        "answers": answers,
     }
 
     return batch
@@ -208,12 +213,13 @@ class VqaGenXDataset(OFADataset):
             "decoder_prompt": decoder_prompt,
             "ref_dict": ref_dict,
             "conf": conf,
-            "explanation": expl_item
+            "explanation": torch.cat([self.explanation_sep, expl_item, self.eos_item]),
+            "answer": tgt_item
         }
         if self.constraint_trie is not None:
-            constraint_mask = torch.zeros((len(target_item), len(self.tgt_dict))).bool()
-            start_idx = len(target_item) - len(tgt_item) - len(expl_item) - 2
-            for i in range(start_idx, len(target_item)):
+            constraint_mask = torch.zeros((len(tgt_item)+len(src_item)-2, len(self.tgt_dict))).bool()
+            start_idx = len(src_item)-2
+            for i in range(start_idx, len(constraint_mask)):
                 constraint_prefix_token = [self.tgt_dict.bos()] + target_item[start_idx:i].tolist()
                 constraint_nodes = self.constraint_trie.get_next_layer(constraint_prefix_token)
                 constraint_mask[i][constraint_nodes] = True
