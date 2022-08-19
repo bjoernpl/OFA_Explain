@@ -213,7 +213,7 @@ class AdjustLabelSmoothedCrossEntropyCriterionExpl(FairseqCriterion):
         expl_nll_loss = losses["explanation"]["nll_loss"]
         expl_ntokens = losses["explanation"]["ntokens"]
         sample_size = (
-            sample["target"].size(0) if self.sentence_avg else ans_ntokens
+            sample["target"].size(0) if self.sentence_avg else sample["ntokens"]
         )
         loss = ans_loss + expl_loss
         nll_loss = ans_nll_loss + expl_nll_loss
@@ -224,6 +224,8 @@ class AdjustLabelSmoothedCrossEntropyCriterionExpl(FairseqCriterion):
             "ans_nll_loss": ans_nll_loss.data,
             "expl_loss": expl_loss.data,
             "expl_nll_loss": expl_nll_loss.data,
+            "expl_ntokens": expl_ntokens,
+            "ans_ntokens": ans_ntokens,
             "ntokens": sample["ntokens"],
             "nsentences": sample["nsentences"],
             "sample_size": sample_size,
@@ -384,6 +386,8 @@ class AdjustLabelSmoothedCrossEntropyCriterionExpl(FairseqCriterion):
 
         ntokens = sum(log.get("ntokens", 0) for log in logging_outputs)
         nsentences = sum(log.get("nsentences", 0) for log in logging_outputs)
+        ans_ntokens = sum(log.get("ans_ntokens", 0) for log in logging_outputs)
+        expl_ntokens = sum(log.get("expl_ntokens", 0) for log in logging_outputs)
         sample_size = sum(log.get("sample_size", 0) for log in logging_outputs)
         sample_size_v1 = sum(log.get("sample_size_v1", 0) for log in logging_outputs)
         sample_size_v2 = sum(log.get("sample_size_v2", 0) for log in logging_outputs)
@@ -401,16 +405,16 @@ class AdjustLabelSmoothedCrossEntropyCriterionExpl(FairseqCriterion):
             "nll_loss", nll_loss_sum / sample_size, ntokens, round=3
         )
         metrics.log_scalar(
-            "ans_loss", ans_loss_sum / sample_size, ntokens, round=3
+            "ans_loss", ans_loss_sum / ans_ntokens, ans_ntokens, round=3
         )
         metrics.log_scalar(
-            "ans_nll_loss", ans_nll_loss_sum / sample_size, ntokens, round=3
+            "ans_nll_loss", ans_nll_loss_sum / ans_ntokens, ans_ntokens, round=3
         )
         metrics.log_scalar(
-            "expl_loss", expl_loss_sum / sample_size, ntokens, round=3
+            "expl_loss", expl_loss_sum / expl_ntokens, expl_ntokens, round=3
         )
         metrics.log_scalar(
-            "expl_nll_loss", expl_nll_loss_sum / sample_size, ntokens, round=3
+            "expl_nll_loss", expl_nll_loss_sum / expl_ntokens, expl_ntokens, round=3
         )
         metrics.log_derived(
             "ppl", lambda meters: utils.get_perplexity(meters["nll_loss"].avg)
