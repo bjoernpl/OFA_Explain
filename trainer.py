@@ -512,7 +512,7 @@ class Trainer(object):
                         state["model"], strict=True, model_cfg=self.cfg.model
                     )
                 # save memory for later steps
-                if not (self.cfg.ema.store_ema and (self.cfg.checkpoint.use_latest_weights_to_init_ema or not ("extra_state" in state and "ema" in state["extra_state"]))):
+                if not (self.cfg.ema.store_ema and (not ("extra_state" in state and "ema" in state["extra_state"]))):
                     del state["model"]
                 if utils.has_parameters(self.get_criterion()):
                     self.get_criterion().load_state_dict(
@@ -584,7 +584,7 @@ class Trainer(object):
                         meter.reset()
 
             if self.cfg.ema.store_ema:
-                if self.cfg.checkpoint.use_latest_weights_to_init_ema or "ema" not in extra_state:
+                if False or "ema" not in extra_state:
                     if "ema" not in extra_state:
                         logger.warn(
                             "EMA not found in checkpoint. But store_ema is True. "
