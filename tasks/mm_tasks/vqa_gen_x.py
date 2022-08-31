@@ -9,6 +9,7 @@ import logging
 import os
 import math
 import pickle
+from functools import partial
 from typing import Optional
 from argparse import Namespace
 from data.file_dataset import FileDataset
@@ -22,6 +23,7 @@ from models import search
 from data import data_utils
 from tasks.ofa_task import OFAConfig, OFATask
 from utils.trie import Trie
+from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +104,7 @@ class VqaGenXTask(OFATask):
 
         self.uses_ema = self.cfg.uses_ema
 
-        assert self.cfg.val_inference_type in ["allcand", "beamsearch"], \
+        assert self.cfg.val_inference_type in ["allcand", "beamsearch", "beamsearch+similarity"], \
             "Unknown inference type encountered: {}, should be allcand or beamsearch.".format(self.cfg.val_inference_type)
 
     def load_dataset(self, split, epoch=1, combine=False, **kwargs):
@@ -167,6 +169,12 @@ class VqaGenXTask(OFATask):
             self.generator = self.build_generator(
                 [model], Namespace(**gen_args)
             )
+        elif self.cfg.val_inference_type == "beamsearch+similarity":
+            gen_args = json.loads(self.cfg.eval_args)
+            self.generator = self.build_generator(
+                [model], Namespace(**gen_args)
+            )
+            self.similarity_model = SentenceTransformer("stsb-mpnet-base-v2")
         else:
             raise NotImplementedError("Error: Unknown inference type encountered.")
 
@@ -246,20 +254,34 @@ class VqaGenXTask(OFATask):
                 predicts = valid_result.argmax(1).tolist()
                 hyps = [self.index2ans[predict_index] for predict_index in predicts]                    
             
-            elif self.cfg.val_inference_type == "beamsearch":
+            elif self.cfg.val_inference_type in ["beamsearch", "beamsearch+similarity"]:
                 raw_hyps = self.inference_step(self.generator, [eval_model], sample, prefix_tokens=sample['prefix_tokens'])
                 hyps = []
+                expls = []
                 for i, sample_id in enumerate(sample["id"].tolist()):
-                    prefix_len = sample['prefix_tokens'][i].ne(1).sum().item()
-                    detok_hypo_str = decode_fn(raw_hyps[i][0]["tokens"][prefix_len:], self.tgt_dict, self.bpe, self.generator)
-                    hyps.append(detok_hypo_str.strip())
+                    prefix_len = 0#sample['prefix_tokens'][i].ne(1).sum().item()
+                    detok_hypo_str = decode_fn(raw_hyps[i][0]["tokens"][prefix_len:], self.tgt_dict, self.bpe, self.generator).strip()
+                    split = detok_hypo_str.split(self.expl_token)
+                    if len(split) == 1:
+                        hyps.append(detok_hypo_str)
+                        expls.append("")
+                    else:
+                        ans, expl = split[0], split[1]
+                        hyps.append(ans)
+                        expls.append(expl)
 
             else:
                 raise NotImplementedError("Error: Unknown inference type encountered.")
 
         scores = [ref_dict.get(hyp, 0) for ref_dict, hyp in zip(sample['ref_dict'], hyps)]
+        target_expls = [decode_fn(x[x.ne(1)][1:], self.tgt_dict, self.bpe, self.generator).strip() for x in sample["explanations"]]
+        expl_scores = [self.compute_similarity(expl, target) for expl, target in zip(expls, target_expls)]
         logging_output["_vqa_score_sum"] = sum(scores)
         logging_output["_vqa_cnt"] = len(scores)
+        logging_output["_expl_score_sum"] = sum(expl_scores)
+        logging_output["_expl_cnt"] = len(expl_scores)
+        logging_output["_total_sum_scores"] = sum([scores[i] * expl_scores[i] for i in range(len(scores))])
+        logging_output["_total_cnt"] = len(scores)
 
         return loss, sample_size, logging_output
 
@@ -273,12 +295,26 @@ class VqaGenXTask(OFATask):
                 result = result.cpu()
             return result
 
-        def compute_score(meters):
-            score = meters["_vqa_score_sum"].sum / meters["_vqa_cnt"].sum
+        def compute_score(meters, sum_key, cnt_key):
+            score = meters[sum_key].sum / meters[cnt_key].sum
             score = score if isinstance(score, float) else score.item()
             return round(score, 4)
 
         if sum_logs("_vqa_cnt") > 0:
             metrics.log_scalar("_vqa_score_sum", sum_logs("_vqa_score_sum"))
             metrics.log_scalar("_vqa_cnt", sum_logs("_vqa_cnt"))
-            metrics.log_derived("vqa_score", compute_score)
+            metrics.log_derived("vqa_score", partial(compute_score, sum_key="_vqa_score_sum", cnt_key="_vqa_cnt"))
+
+        if sum_logs("_expl_cnt") > 0:
+            metrics.log_scalar("_expl_score_sum", sum_logs("_expl_score_sum"))
+            metrics.log_scalar("_expl_cnt", sum_logs("_expl_cnt"))
+            metrics.log_derived("expl_score", partial(compute_score, sum_key="_expl_score_sum", cnt_key="_expl_cnt"))
+
+        if sum_logs("_total_cnt") > 0:
+            metrics.log_scalar("_total_sum_scores", sum_logs("_total_sum_scores"))
+            metrics.log_scalar("_total_cnt", sum_logs("_total_cnt"))
+            metrics.log_derived("total_score", partial(compute_score, sum_key="_total_sum_scores", cnt_key="_total_cnt"))
+
+    def compute_similarity(self, target, expl):
+        embeds = torch.from_numpy(self.similarity_model.encode([target, expl]))
+        return torch.clip(torch.nn.functional.cosine_similarity(embeds[0], embeds[1], dim=0), min=0, max=1).item()
