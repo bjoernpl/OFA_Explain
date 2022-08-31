@@ -285,18 +285,19 @@ class AdjustLabelSmoothedCrossEntropyCriterionExpl(FairseqCriterion):
         for i in range(sample_size):
             output = net_output[0][i]
             num_prefix_ans_tokens = prefix_tokens_non_one[i]+answers_non_one[i]
-            output_ans_with_padding = output[:num_prefix_ans_tokens]
-            output_expl_with_padding = output[num_prefix_ans_tokens:]
+            output_ans = output[:answers_non_one[i]]
+            output_expl = output[answers_non_one[i]:]
             tgt_ans = target[i, :num_prefix_ans_tokens].unsqueeze(0)
             tgt_exp = target[i, num_prefix_ans_tokens:].unsqueeze(0)
+            output_expl = output_expl[:len(tgt_exp[0])]
             ans_loss, ans_nll_loss, ans_ntokens = self.compute_ans_loss(
-                model, output_ans_with_padding, tgt_ans, sample, update_num, reduce,
-                sample["constraint_masks"][i, :num_prefix_ans_tokens] if "constraint_masks" in sample else None,
+                model, output_ans, tgt_ans, sample, update_num, reduce,
+                None,#sample["constraint_masks"][i, :num_prefix_ans_tokens] if "constraint_masks" in sample else None,
                 sample["conf"][i] if "conf" in sample else 1,
             )
             exp_loss, exp_nll_loss, exp_ntokens = \
                 self.compute_expl_loss(
-                    model, output_expl_with_padding, tgt_exp, sample, update_num, reduce,
+                    model, output_expl, tgt_exp, sample, update_num, reduce,
                     sample["conf"][i] if "conf" in sample else 1
            )
             losses["answer"]["loss"][i] = ans_loss
@@ -343,7 +344,7 @@ class AdjustLabelSmoothedCrossEntropyCriterionExpl(FairseqCriterion):
         lprobs, target, constraint_masks = self.get_lprobs_and_target(model, output, sample_copy, constraint_masks, conf)
         if constraint_masks is not None:
             constraint_masks = constraint_masks[target != self.padding_idx]
-        lprobs = lprobs[target != self.padding_idx]
+        # lprobs = lprobs[target != self.padding_idx]
         target = target[target != self.padding_idx]
         loss, nll_loss, ntokens = label_smoothed_nll_loss(
             lprobs,
@@ -389,32 +390,24 @@ class AdjustLabelSmoothedCrossEntropyCriterionExpl(FairseqCriterion):
         ans_ntokens = sum(log.get("ans_ntokens", 0) for log in logging_outputs)
         expl_ntokens = sum(log.get("expl_ntokens", 0) for log in logging_outputs)
         sample_size = sum(log.get("sample_size", 0) for log in logging_outputs)
-        sample_size_v1 = sum(log.get("sample_size_v1", 0) for log in logging_outputs)
-        sample_size_v2 = sum(log.get("sample_size_v2", 0) for log in logging_outputs)
 
         metrics.log_scalar(
             "loss", loss_sum / sample_size, sample_size, round=3
         )
         metrics.log_scalar(
-            "loss_v1", loss_sum_v1 / max(sample_size_v1, 1), max(sample_size_v1, 1), round=3
-        )
-        metrics.log_scalar(
-            "loss_v2", loss_sum_v2 / max(sample_size_v2, 1), max(sample_size_v2, 1), round=3
-        )
-        metrics.log_scalar(
             "nll_loss", nll_loss_sum / sample_size, ntokens, round=3
         )
         metrics.log_scalar(
-            "ans_loss", ans_loss_sum / ans_ntokens, ans_ntokens, round=3
+            "ans_loss", ans_loss_sum / sample_size, sample_size, round=3
         )
         metrics.log_scalar(
-            "ans_nll_loss", ans_nll_loss_sum / ans_ntokens, ans_ntokens, round=3
+            "ans_nll_loss", ans_nll_loss_sum / sample_size, sample_size, round=3
         )
         metrics.log_scalar(
-            "expl_loss", expl_loss_sum / expl_ntokens, expl_ntokens, round=3
+            "expl_loss", expl_loss_sum / sample_size, sample_size, round=3
         )
         metrics.log_scalar(
-            "expl_nll_loss", expl_nll_loss_sum / expl_ntokens, expl_ntokens, round=3
+            "expl_nll_loss", expl_nll_loss_sum / sample_size, sample_size, round=3
         )
         metrics.log_derived(
             "ppl", lambda meters: utils.get_perplexity(meters["nll_loss"].avg)
@@ -428,12 +421,6 @@ class AdjustLabelSmoothedCrossEntropyCriterionExpl(FairseqCriterion):
         )
         metrics.log_scalar(
             "sample_size", sample_size, 1, round=3
-        )
-        metrics.log_scalar(
-            "sample_size_v1", sample_size_v1, 1, round=3
-        )
-        metrics.log_scalar(
-            "sample_size_v2", sample_size_v2, 1, round=3
         )
 
         total = utils.item(sum(log.get("total", 0) for log in logging_outputs))
