@@ -68,6 +68,14 @@ def collate(samples, pad_idx, eos_idx):
         prefix_tokens = merge("decoder_prompt")
         prefix_tokens = prefix_tokens[:, 1:]
 
+    explanations = None
+    if samples[0].get("explanation", None) is not None:
+        explanations = merge("explanation")
+
+    answers = None
+    if samples[0].get("answer", None) is not None:
+        answers = merge("answer")
+
     prev_output_tokens = None
     target = None
     if samples[0].get("target", None) is not None:
@@ -98,13 +106,15 @@ def collate(samples, pad_idx, eos_idx):
         "constraint_masks": constraint_masks,
         "decoder_prompts": decoder_prompts,
         "target": target,
-        "prefix_tokens": prefix_tokens
+        "prefix_tokens": prefix_tokens,
+        "explanations": explanations,
+        "answers": answers,
     }
 
     return batch
 
 
-class VqaGenDataset(OFADataset):
+class VqaGenXDataset(OFADataset):
     def __init__(
         self,
         split,
@@ -119,7 +129,8 @@ class VqaGenDataset(OFADataset):
         add_object=False,
         constraint_trie=None,
         imagenet_default_mean_and_std=False,
-        prompt_type="none"
+        prompt_type="none",
+        explanation_separator=None
     ):
         super().__init__(split, dataset, bpe, src_dict, tgt_dict)
         self.max_src_length = max_src_length
@@ -130,6 +141,8 @@ class VqaGenDataset(OFADataset):
         self.add_object = add_object
         self.constraint_trie = constraint_trie
         self.prompt_type = prompt_type
+
+        self.expl_token = explanation_separator
 
         if imagenet_default_mean_and_std:
             mean = IMAGENET_DEFAULT_MEAN
@@ -148,9 +161,9 @@ class VqaGenDataset(OFADataset):
     def __getitem__(self, index):
         item = self.dataset[index]
         if len(item) == 5:
-            uniq_id, image, question, ref, predict_objects = item
+            uniq_id, image, question, ref, explanation = item
         else:
-            uniq_id, image, question, ref, predict_objects, caption = item
+            uniq_id, image, question, ref, explanation, caption = item
 
         image = Image.open(BytesIO(base64.urlsafe_b64decode(image)))
         patch_image = self.patch_resize_transform(image)
@@ -163,29 +176,20 @@ class VqaGenDataset(OFADataset):
         ref_dict = {item.split('|!+')[1]: float(item.split('|!+')[0]) for item in ref.split('&&')}
         answer = max(ref_dict, key=ref_dict.get)
         conf = torch.tensor([ref_dict[answer]])
-        tgt_item = self.encode_text(" {}".format(answer))
-
-        if self.add_object and predict_objects is not None:
-            predict_object_seq = ' '.join(predict_objects.strip().split('&&')[:self.max_object_length])
-            predict_object_item = self.encode_text(" object: {}".format(predict_object_seq))
-            src_item = torch.cat([src_item, predict_object_item])
+        ans_target_item = self.encode_text(" {}".format(answer))
+        expl_target_item = self.encode_text(" {}".format(explanation))
+        expl_target_item = torch.cat([self.expl_token, expl_target_item, self.eos_item])
 
         src_item = torch.cat([self.bos_item, src_item, self.eos_item])
-        if self.prompt_type == 'none':
-            prev_output_item = torch.cat([self.bos_item, tgt_item])
-            target_item = torch.cat([prev_output_item[1:], self.eos_item])
-            decoder_prompt = self.bos_item
-        elif self.prompt_type == 'src':
-            prev_output_item = torch.cat([src_item, tgt_item])
-            target_item = torch.cat([prev_output_item[1:], self.eos_item])
-            decoder_prompt = src_item
-        elif self.prompt_type == 'prev_output':
-            prev_output_item = torch.cat([src_item[:-1], tgt_item])
-            target_item = torch.cat([prev_output_item[1:], self.eos_item])
+        if self.prompt_type == 'prev_output':
+            prev_output_item = torch.cat([src_item[:-1], ans_target_item, expl_target_item[:-1]])
+
+            # subtract two to remove bos and eos
+            pad_values = torch.full((src_item.size(0) - 2,), self.tgt_dict.pad())
+            target_item = torch.cat([pad_values, ans_target_item, expl_target_item])
             decoder_prompt = src_item[:-1]
         else:
             raise NotImplementedError
-        target_item[:-len(tgt_item)-1] = self.tgt_dict.pad()
 
         example = {
             "id": uniq_id,
@@ -196,12 +200,14 @@ class VqaGenDataset(OFADataset):
             "prev_output_tokens": prev_output_item,
             "decoder_prompt": decoder_prompt,
             "ref_dict": ref_dict,
+            "answer": ans_target_item,
+            "explanation": expl_target_item,
             "conf": conf,
         }
         if self.constraint_trie is not None:
-            constraint_mask = torch.zeros((len(target_item), len(self.tgt_dict))).bool()
-            start_idx = len(target_item) - len(tgt_item) - 1
-            for i in range(len(target_item)-len(tgt_item)-1, len(target_item)):
+            constraint_mask = torch.zeros((len(ans_target_item) + len(src_item) - 2, len(self.tgt_dict))).bool()
+            start_idx = len(src_item) - 2
+            for i in range(start_idx, len(constraint_mask)):
                 constraint_prefix_token = [self.tgt_dict.bos()] + target_item[start_idx:i].tolist()
                 constraint_nodes = self.constraint_trie.get_next_layer(constraint_prefix_token)
                 constraint_mask[i][constraint_nodes] = True
