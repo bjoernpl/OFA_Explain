@@ -259,8 +259,9 @@ class VqaGenXTask(OFATask):
                 hyps = []
                 expls = []
                 for i, sample_id in enumerate(sample["id"].tolist()):
-                    prefix_len = 0#sample['prefix_tokens'][i].ne(1).sum().item()
+                    prefix_len = sample['prefix_tokens'][i].ne(1).sum().item()
                     detok_hypo_str = decode_fn(raw_hyps[i][0]["tokens"][prefix_len:], self.tgt_dict, self.bpe, self.generator).strip()
+                    print(detok_hypo_str)
                     split = detok_hypo_str.split(self.expl_token)
                     if len(split) == 1:
                         hyps.append(detok_hypo_str)
