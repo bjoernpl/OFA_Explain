@@ -66,7 +66,6 @@ def collate(samples, pad_idx, eos_idx):
     prefix_tokens = None
     if samples[0].get("decoder_prompt", None) is not None:
         prefix_tokens = merge("decoder_prompt")
-        prefix_tokens = prefix_tokens[:, 1:]
 
     explanations = None
     if samples[0].get("explanation", None) is not None:
@@ -127,10 +126,8 @@ class VqaGenXDataset(OFADataset):
         max_tgt_length=30,
         patch_image_size=224,
         add_object=False,
-        constraint_trie=None,
         imagenet_default_mean_and_std=False,
-        prompt_type="none",
-        explanation_separator=None
+        prompt_type="none"
     ):
         super().__init__(split, dataset, bpe, src_dict, tgt_dict)
         self.max_src_length = max_src_length
@@ -139,10 +136,7 @@ class VqaGenXDataset(OFADataset):
         self.patch_image_size = patch_image_size
 
         self.add_object = add_object
-        self.constraint_trie = constraint_trie
         self.prompt_type = prompt_type
-
-        self.expl_token = explanation_separator
 
         if imagenet_default_mean_and_std:
             mean = IMAGENET_DEFAULT_MEAN
@@ -165,29 +159,35 @@ class VqaGenXDataset(OFADataset):
         else:
             uniq_id, image, question, ref, explanation, caption = item
 
+        # Process image
         image = Image.open(BytesIO(base64.urlsafe_b64decode(image)))
         patch_image = self.patch_resize_transform(image)
         patch_mask = torch.tensor([True])
 
+        # Process question
         question = self.pre_question(question, self.max_src_length)
         question = question + '?' if not question.endswith('?') else question
         src_item = self.encode_text(' {}'.format(question))
 
+        # Process answer
         ref_dict = {item.split('|!+')[1]: float(item.split('|!+')[0]) for item in ref.split('&&')}
         answer = max(ref_dict, key=ref_dict.get)
         conf = torch.tensor([ref_dict[answer]])
-        ans_target_item = self.encode_text(" {}".format(answer))
-        expl_target_item = self.encode_text(" {}".format(explanation))
-        expl_target_item = torch.cat([self.expl_token, expl_target_item, self.eos_item])
+        answer = f" the answer is {answer}"
+        ans_target_item = self.encode_text(answer)
 
-        src_item = torch.cat([self.bos_item, src_item, self.eos_item])
+        # Process explanation
+        explanation = f" because {explanation}"
+        expl_target_item = self.encode_text(explanation)
+
+        # Combine as '[question] {bos} the answer is [answer] because [explanation] {eos}' following NLX-GPT
         if self.prompt_type == 'prev_output':
-            prev_output_item = torch.cat([src_item[:-1], ans_target_item, expl_target_item[:-1]])
+            prev_output_item = torch.cat([src_item, self.bos_item, ans_target_item, expl_target_item, self.eos_item])
 
             # subtract two to remove bos and eos
-            pad_values = torch.full((src_item.size(0) - 2,), self.tgt_dict.pad())
-            target_item = torch.cat([pad_values, ans_target_item, expl_target_item])
-            decoder_prompt = src_item[:-1]
+            pad_values = torch.full(tuple([src_item.size(0)]), self.tgt_dict.pad())
+            target_item = torch.cat([pad_values, self.bos_item, ans_target_item, expl_target_item, self.eos_item])
+            decoder_prompt = self.bos_item
         else:
             raise NotImplementedError
 
@@ -204,14 +204,6 @@ class VqaGenXDataset(OFADataset):
             "explanation": expl_target_item,
             "conf": conf,
         }
-        if self.constraint_trie is not None:
-            constraint_mask = torch.zeros((len(ans_target_item) + len(src_item) - 2, len(self.tgt_dict))).bool()
-            start_idx = len(src_item) - 2
-            for i in range(start_idx, len(constraint_mask)):
-                constraint_prefix_token = [self.tgt_dict.bos()] + target_item[start_idx:i].tolist()
-                constraint_nodes = self.constraint_trie.get_next_layer(constraint_prefix_token)
-                constraint_mask[i][constraint_nodes] = True
-            example["constraint_mask"] = constraint_mask
         return example
 
     def collater(self, samples, pad_to_length=None):
