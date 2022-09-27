@@ -178,17 +178,17 @@ class VqaGenXTask(OFATask):
                     hypothesis_str = decode_fn(hypothesis, self.tgt_dict, self.bpe, self.generator).strip()
                     if "because" in hypothesis_str:
                         print("has because")
-                        ans, expl = hypothesis_str.split('because')[1]
+                        ans, expl = hypothesis_str.split('because', maxsplit=1)
                         expls.append(f"because {expl}")
                         if ans.startswith("the answer is"):
-                            ans = hypothesis_str.split("the answer is")[1]
+                            ans = hypothesis_str.split("the answer is", maxsplit=1)[1]
                             hyps.append(ans)
                             print("correct start")
                         else:
                             hyps.append(ans)
                     else:
                         if hypothesis_str.startswith("the answer is"):
-                            ans = hypothesis_str.split("the answer is")[1]
+                            ans = hypothesis_str.split("the answer is", maxsplit=1)[1]
                             hyps.append(ans)
                             print("correct start")
                         else:
