@@ -46,12 +46,13 @@ class CrossEntropyExplCriterion(FairseqCriterion):
         3) logging outputs to display while training
         """
         net_output = model(**sample["net_input"])
-        loss = self.compute_loss(model, net_output, sample, update_num, reduce=reduce)
+        loss, nll_loss = self.compute_loss(model, net_output, sample, update_num, reduce=reduce)
         sample_size = (
             sample["target"].size(0) if self.sentence_avg else sample["ntokens"]
         )
         logging_output = {
             "loss": loss.data,
+            "nll_loss": nll_loss.data,
             "ntokens": sample["ntokens"],
             "nsentences": sample["nsentences"],
             "sample_size": sample_size,
@@ -69,8 +70,11 @@ class CrossEntropyExplCriterion(FairseqCriterion):
 
     def compute_loss(self, model, net_output, sample, update_num, reduce=True):
         lprobs, target = self.get_lprobs_and_target(model, net_output, sample)
+        lprobs = lprobs[target != self.padding_idx]
+        target = target[target != self.padding_idx]
+        nll_loss = -lprobs.gather(dim=-1, index=target.unsqueeze(-1))
         loss = self.loss(lprobs, target)
-        return loss
+        return loss, nll_loss.sum()
 
     def compute_accuracy(self, model, net_output, sample):
         lprobs, target = self.get_lprobs_and_target(model, net_output, sample)
@@ -85,13 +89,18 @@ class CrossEntropyExplCriterion(FairseqCriterion):
     def reduce_metrics(cls, logging_outputs) -> None:
         """Aggregate logging outputs from data parallel training."""
         loss_sum = sum(log.get("loss", 0) for log in logging_outputs)
+        nll_loss_sum = sum(log.get("nll_loss", 0) for log in logging_outputs)
+
 
         ntokens = sum(log.get("ntokens", 0) for log in logging_outputs)
         nsentences = sum(log.get("nsentences", 0) for log in logging_outputs)
         sample_size = sum(log.get("sample_size", 0) for log in logging_outputs)
 
         metrics.log_scalar(
-            "loss", loss_sum / sample_size, sample_size, round=3
+            "loss", loss_sum / sample_size, sample_size, round=4
+        )
+        metrics.log_scalar(
+            "nll_loss", nll_loss_sum / sample_size, sample_size, round=4
         )
         metrics.log_scalar(
             "ntokens", ntokens, 1, round=3

@@ -180,14 +180,13 @@ class VqaGenXDataset(OFADataset):
         explanation = f" because {explanation}"
         expl_target_item = self.encode_text(explanation)
 
-        # Combine as '[question] {bos} the answer is [answer] because [explanation] {eos}' following NLX-GPT
+        # Combine as '{bos} [question] the answer is [answer] because [explanation] {eos}' following NLX-GPT
         if self.prompt_type == 'prev_output':
-            prev_output_item = torch.cat([src_item, self.bos_item, ans_target_item, expl_target_item, self.eos_item])
+            prev_output_item = torch.cat([self.bos_item, src_item, ans_target_item, expl_target_item, self.eos_item])
 
-            # subtract two to remove bos and eos
-            pad_values = torch.full(tuple([src_item.size(0)]), self.tgt_dict.pad())
-            target_item = torch.cat([pad_values, self.bos_item, ans_target_item, expl_target_item, self.eos_item])
-            decoder_prompt = self.bos_item
+            pad_values = torch.full(tuple([src_item.size(0) + 1]), self.tgt_dict.pad())
+            target_item = torch.cat([pad_values, ans_target_item, expl_target_item, self.eos_item])
+            decoder_prompt = torch.cat([self.bos_item, src_item])
         else:
             raise NotImplementedError
 

@@ -171,13 +171,28 @@ class VqaGenXTask(OFATask):
                 hyps = []
                 expls = []
                 for i, sample_id in enumerate(sample["id"].tolist()):
-                    detok_hypo_str = decode_fn(raw_hyps[i][0]["tokens"], self.tgt_dict, self.bpe, self.generator).strip()
-                    print(detok_hypo_str)
-                    if "because" in detok_hypo_str:
-                        expls.append(f"because {detok_hypo_str.split('because')[1]}")
-                        hyps.append(detok_hypo_str.split('because')[0])
+                    hypothesis = raw_hyps[i][0]["tokens"]
+                    # remove padding from decoder prompt
+                    prefix_len = sample['prefix_tokens'][i].ne(1).sum().item()
+                    hypothesis = hypothesis[prefix_len:]
+                    hypothesis_str = decode_fn(hypothesis, self.tgt_dict, self.bpe, self.generator).strip()
+                    if "because" in hypothesis_str:
+                        print("has because")
+                        ans, expl = hypothesis_str.split('because')[1]
+                        expls.append(f"because {expl}")
+                        if ans.startswith("the answer is"):
+                            ans = hypothesis_str.split("the answer is")[1]
+                            hyps.append(ans)
+                            print("correct start")
+                        else:
+                            hyps.append(ans)
                     else:
-                        hyps.append(detok_hypo_str)
+                        if hypothesis_str.startswith("the answer is"):
+                            ans = hypothesis_str.split("the answer is")[1]
+                            hyps.append(ans)
+                            print("correct start")
+                        else:
+                            hyps.append(hypothesis_str)
                         expls.append("")
             else:
                 raise NotImplementedError("Error: Unknown inference type encountered.")
@@ -225,5 +240,5 @@ class VqaGenXTask(OFATask):
             metrics.log_derived("total_score", partial(compute_score, sum_key="_total_sum_scores", cnt_key="_total_cnt"))
 
     def compute_similarity(self, target, expl):
-        embeds = torch.from_numpy(self.similarity_model.encode([target, expl]))
+        embeds = torch.from_numpy(self.similarity_model.encode([target, expl], show_progress_bar=False))
         return torch.clip(torch.nn.functional.cosine_similarity(embeds[0], embeds[1], dim=0), min=0, max=1).item()
