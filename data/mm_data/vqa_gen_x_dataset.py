@@ -182,11 +182,21 @@ class VqaGenXDataset(OFADataset):
 
         # Combine as '{bos} [question] the answer is [answer] because [explanation] {eos}' following NLX-GPT
         if self.prompt_type == 'prev_output':
-            prev_output_item = torch.cat([self.bos_item, src_item, ans_target_item, expl_target_item, self.eos_item])
+            # Prev output item is for teacher forcing
+            # includes < bos question answer expl>
+            prev_output_item = torch.cat([self.bos_item, src_item, ans_target_item, expl_target_item])
 
-            pad_values = torch.full(tuple([src_item.size(0) + 1]), self.tgt_dict.pad())
+            # Pad items of length of src_item (without bos)
+            pad_values = torch.full(tuple([src_item.size(0)]), self.tgt_dict.pad())
+
+            # Target item includes < question answer expl eos >
             target_item = torch.cat([pad_values, ans_target_item, expl_target_item, self.eos_item])
             decoder_prompt = torch.cat([self.bos_item, src_item])
+
+            # prev_output_item = bos q1 q2 q3 q4 t1 t2 t3 t4
+            # prompt = Frage = bos q1 q2 q3 q4
+            # target = pad1 pad2 pad3 pad4 t1 t2 t3 t4 eos
+
         else:
             raise NotImplementedError
 
