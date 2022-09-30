@@ -27,11 +27,16 @@ def decode_fn(x, tgt_dict, bpe, generator, tokenizer=None):
     return x
 
 
-def eval_vqa_gen(task, generator, models, sample, **kwargs):
-    hypos = task.inference_step(generator, models, sample)
+def eval_vqa_gen(task, generator, models, sample, use_prefix_tokens=True, **kwargs):
+    if use_prefix_tokens:
+        prefix_length = len(sample['prefix_tokens'][0])
+        hypos = task.inference_step(generator, models, sample, prefix_tokens=sample['prefix_tokens'])
+    else:
+        prefix_length = 0
+        hypos = task.inference_step(generator, models, sample)
     results = []
     for i, sample_id in enumerate(sample["id"].tolist()):
-        detok_hypo_str = decode_fn(hypos[i][0]["tokens"], task.tgt_dict, task.bpe, generator)
+        detok_hypo_str = decode_fn(hypos[i][0]["tokens"][prefix_length:], task.tgt_dict, task.bpe, generator)
         results.append({"question_id": sample_id, "answer": detok_hypo_str.strip()})
     #scores = [ref_dict.get(result['answer'], 0) for ref_dict, result in zip(sample['ref_dict'], results)]
     return results #, scores
