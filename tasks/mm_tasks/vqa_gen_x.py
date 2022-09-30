@@ -196,9 +196,17 @@ class VqaGenXTask(OFATask):
             else:
                 raise NotImplementedError("Error: Unknown inference type encountered.")
 
+        questions = [decode_fn(x[x.ne(1)], self.tgt_dict, self.bpe, self.generator).strip() for x in sample["net_input"]["src_tokens"]]
         scores = [ref_dict.get(hyp, 0) for ref_dict, hyp in zip(sample['ref_dict'], hyps)]
         target_expls = [decode_fn(x[x.ne(1)], self.tgt_dict, self.bpe, self.generator).strip() for x in sample["explanations"]]
         expl_scores = [self.compute_similarity(expl, target) for expl, target in zip(expls, target_expls)]
+        with open("../outputs/validation", 'w+') as f:
+            for q, ans, expl, ref_dict, target_expl in zip(questions, hyps, expls, sample['ref_dict'], target_expls):
+                line = f"Question: {q}\n"
+                net_out = f"Net output: {ans} {expl}\n"
+                target = f"Target: {ref_dict.items()[0]} {target_expl}\n"
+                sep = "------------"
+                f.writelines([line, net_out, target, sep])
         logging_output["_correct_format"] = correct_format / len(hyps)
         logging_output["_vqa_score_sum"] = sum(scores)
         logging_output["_vqa_cnt"] = len(scores)
