@@ -170,6 +170,7 @@ class VqaGenXTask(OFATask):
                 raw_hyps = self.inference_step(self.generator, [eval_model], sample, prefix_tokens=sample["prefix_tokens"])
                 hyps = []
                 expls = []
+                correct_format = 0
                 for i, sample_id in enumerate(sample["id"].tolist()):
                     hypothesis = raw_hyps[i][0]["tokens"]
                     # remove padding from decoder prompt
@@ -177,20 +178,18 @@ class VqaGenXTask(OFATask):
                     hypothesis = hypothesis[prefix_len:]
                     hypothesis_str = decode_fn(hypothesis, self.tgt_dict, self.bpe, self.generator).strip()
                     if "because" in hypothesis_str:
-                        print("has because")
                         ans, expl = hypothesis_str.split('because', maxsplit=1)
                         expls.append(f"because {expl}")
                         if ans.startswith("the answer is"):
-                            ans = hypothesis_str.split("the answer is", maxsplit=1)[1]
+                            ans = hypothesis_str.split("the answer is", maxsplit=1)[1].strip()
                             hyps.append(ans)
-                            print("correct start")
+                            correct_format += 1
                         else:
                             hyps.append(ans)
                     else:
                         if hypothesis_str.startswith("the answer is"):
-                            ans = hypothesis_str.split("the answer is", maxsplit=1)[1]
+                            ans = hypothesis_str.split("the answer is", maxsplit=1)[1].strip()
                             hyps.append(ans)
-                            print("correct start")
                         else:
                             hyps.append(hypothesis_str)
                         expls.append("")
@@ -200,6 +199,7 @@ class VqaGenXTask(OFATask):
         scores = [ref_dict.get(hyp, 0) for ref_dict, hyp in zip(sample['ref_dict'], hyps)]
         target_expls = [decode_fn(x[x.ne(1)], self.tgt_dict, self.bpe, self.generator).strip() for x in sample["explanations"]]
         expl_scores = [self.compute_similarity(expl, target) for expl, target in zip(expls, target_expls)]
+        logging_output["_correct_format"] = correct_format / len(hyps)
         logging_output["_vqa_score_sum"] = sum(scores)
         logging_output["_vqa_cnt"] = len(scores)
         logging_output["_expl_score_sum"] = sum(expl_scores)
