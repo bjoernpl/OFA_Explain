@@ -196,7 +196,14 @@ class VqaGenXDataset(OFADataset):
             # prev_output_item = bos q1 q2 q3 q4 t1 t2 t3 t4
             # prompt = Frage = bos q1 q2 q3 q4
             # target = pad1 pad2 pad3 pad4 t1 t2 t3 t4 eos
+        elif self.prompt_type == 'without_decoder_prompt':
+            # Prev output item is for teacher forcing
+            # includes < bos answer expl>
+            prev_output_item = torch.cat([self.bos_item, ans_target_item, expl_target_item])
 
+            # Target item includes < question answer expl eos >
+            target_item = torch.cat([ans_target_item, expl_target_item, self.eos_item])
+            decoder_prompt = torch.cat([self.bos_item])
         else:
             raise NotImplementedError
 
