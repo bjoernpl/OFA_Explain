@@ -33,7 +33,7 @@ class CrossEntropyExplCriterion(FairseqCriterion):
         report_accuracy=False,
     ):
         super().__init__(task)
-        self.loss = torch.nn.CrossEntropyLoss()
+        self.loss = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
         self.sentence_avg = sentence_avg
         self.report_accuracy = report_accuracy
 
