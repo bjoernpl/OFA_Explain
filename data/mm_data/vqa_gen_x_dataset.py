@@ -173,7 +173,7 @@ class VqaGenXDataset(OFADataset):
         ref_dict = {item.split('|!+')[1]: float(item.split('|!+')[0]) for item in ref.split('&&')}
         answer = max(ref_dict, key=ref_dict.get)
         conf = torch.tensor([ref_dict[answer]])
-        answer = f" the answer is {answer}"
+        answer = f" {answer}"
         ans_target_item = self.encode_text(answer)
 
         # Process explanation
