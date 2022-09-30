@@ -1034,7 +1034,7 @@ class Trainer(object):
         return logging_output
 
     @metrics.aggregate("valid")
-    def valid_step(self, sample, raise_oom=False):
+    def valid_step(self, sample, table=None, raise_oom=False):
         """Do forward pass in evaluation mode."""
         if self.tpu:
             import torch_xla.core.xla_model as xm
@@ -1056,7 +1056,7 @@ class Trainer(object):
 
             try:
                 _loss, sample_size, logging_output = self.task.valid_step(
-                    sample, self.model, self.criterion, **extra_kwargs
+                    sample, self.model, self.criterion, table=table, **extra_kwargs
                 )
             except RuntimeError as e:
                 if "out of memory" in str(e):
