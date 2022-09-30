@@ -137,7 +137,7 @@ class VqaGenXTask(OFATask):
         elif self.cfg.val_inference_type == "beamsearch+similarity":
             gen_args = json.loads(self.cfg.eval_args)
             gen_args["match_source_len"] = False
-            gen_args["beam_size"] = 1
+            gen_args["beam_size"] = 5
             self.generator = self.build_generator(
                 [model], Namespace(**gen_args)
             )
@@ -154,7 +154,7 @@ class VqaGenXTask(OFATask):
 
         return seq_generator
 
-    def valid_step(self, sample, model, criterion, **extra_kwargs):
+    def valid_step(self, sample, model, criterion, table=None, **extra_kwargs):
         loss, sample_size, logging_output = super().valid_step(sample, model, criterion)
 
         if self.uses_ema:
@@ -179,19 +179,11 @@ class VqaGenXTask(OFATask):
                     hypothesis_str = decode_fn(hypothesis, self.tgt_dict, self.bpe, self.generator).strip()
                     if "because" in hypothesis_str:
                         ans, expl = hypothesis_str.split('because', maxsplit=1)
-                        expls.append(f"because {expl}")
-                        if ans.startswith("the answer is"):
-                            ans = hypothesis_str.split("the answer is", maxsplit=1)[1].strip()
-                            hyps.append(ans)
-                            correct_format += 1
-                        else:
-                            hyps.append(ans)
+                        expls.append(f"because {expl.strip()}")
+                        hyps.append(ans.strip())
+                        correct_format += 1
                     else:
-                        if hypothesis_str.startswith("the answer is"):
-                            ans = hypothesis_str.split("the answer is", maxsplit=1)[1].strip()
-                            hyps.append(ans)
-                        else:
-                            hyps.append(hypothesis_str)
+                        hyps.append(hypothesis_str)
                         expls.append("")
             else:
                 raise NotImplementedError("Error: Unknown inference type encountered.")
@@ -200,14 +192,17 @@ class VqaGenXTask(OFATask):
         scores = [ref_dict.get(hyp, 0) for ref_dict, hyp in zip(sample['ref_dict'], hyps)]
         target_expls = [decode_fn(x[x.ne(1)], self.tgt_dict, self.bpe, self.generator).strip() for x in sample["explanations"]]
         expl_scores = [self.compute_similarity(expl, target) for expl, target in zip(expls, target_expls)]
-        with open("../outputs/validation", 'w+') as f:
-            for q, ans, expl, ref_dict, target_expl in zip(questions, hyps, expls, sample['ref_dict'], target_expls):
-                line = f"Question: {q}\n"
-                net_out = f"Net output: {ans} {expl}\n"
-                target = f"Target: {ref_dict.items()[0]} {target_expl}\n"
-                sep = "------------"
-                f.writelines([line, net_out, target, sep])
-        logging_output["_correct_format"] = correct_format / len(hyps)
+
+        # Log samples to wandb
+        for q, raw, ans, expl, ref_dict, target_expl in zip(questions, raw_hyps, hyps, expls, sample['ref_dict'], target_expls):
+            hypothesis = raw[0]["tokens"]
+            # remove padding from decoder prompt
+            prefix_len = sample['prefix_tokens'][i].ne(1).sum().item()
+            hypothesis = hypothesis[prefix_len:]
+            hypothesis_str = decode_fn(hypothesis, self.tgt_dict, self.bpe, self.generator).strip()
+            target_ans = f"{ref_dict}"
+            table.add_data(q, hypothesis_str, ans, expl, target_ans, target_expl)
+
         logging_output["_vqa_score_sum"] = sum(scores)
         logging_output["_vqa_cnt"] = len(scores)
         logging_output["_expl_score_sum"] = sum(expl_scores)
