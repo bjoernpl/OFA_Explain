@@ -2,7 +2,7 @@
 # All rights reserved.
 # This source code is licensed under the Apache 2.0 license 
 # found in the LICENSE file in the root directory.
-
+import functools
 from dataclasses import dataclass, field
 import json
 import logging
@@ -17,6 +17,7 @@ from data.file_dataset import FileDataset
 import torch
 from fairseq import metrics
 from fairseq.tasks import register_task
+import torchmetrics.functional as eval_metrics
 
 from data.mm_data.vqa_gen_x_dataset import VqaGenXDataset
 from models import search
@@ -43,6 +44,29 @@ def decode_fn(x, tgt_dict, bpe, generator, tokenizer=None):
         x = tokenizer.decode(x)
     return x
 
+def aggregate_metrics(examples):
+    # Aggregate metrics from all samples
+    agg_metrics = {}
+    for k in examples[0].keys():
+        agg_metrics[f"_{k}_sum"] = sum([m[k] for m in examples])
+        agg_metrics[f"_{k}_cnt"] = len(examples)
+    return agg_metrics
+
+def calculate_expl_metrics(expl, target):
+    # Calculate metrics: BLEU, ROUGE, BERTScore for one sample
+    bleu = eval_metrics.bleu_score(expl, [target])
+    rouge = eval_metrics.text.rouge_score(expl, target, rouge_keys=("rougeL"))
+    # bert_score = eval_metrics.text.bert_score([expl], [target])
+    final_metrics = {
+        "bleu": bleu,
+        "rouge-fmeasure": rouge['rougeL_fmeasure'],
+        "rouge-precision": rouge['rougeL_precision'],
+        "rouge-recall": rouge['rougeL_recall'],
+        #"bert_score_f1": bert_score["f1"],
+        #"bert_score_precision": bert_score["precision"],
+        #"bert_score_recall": bert_score["recall"],
+    }
+    return final_metrics
 
 @dataclass
 class VqaGenXConfig(OFAConfig):
@@ -157,6 +181,7 @@ class VqaGenXTask(OFATask):
     def valid_step(self, sample, model, criterion, table=None, **extra_kwargs):
         loss, sample_size, logging_output = super().valid_step(sample, model, criterion)
 
+        decode = functools.partial(decode_fn, tgt_dict=self.tgt_dict, bpe=self.bpe, generator=self.generator)
         if self.uses_ema:
             assert 'ema_model' in extra_kwargs and extra_kwargs['ema_model'] is not None
         if self.uses_ema:
@@ -176,7 +201,7 @@ class VqaGenXTask(OFATask):
                     # remove padding from decoder prompt
                     prefix_len = sample['prefix_tokens'][i].ne(1).sum().item()
                     hypothesis = hypothesis[prefix_len:]
-                    hypothesis_str = decode_fn(hypothesis, self.tgt_dict, self.bpe, self.generator).strip()
+                    hypothesis_str = decode(hypothesis).strip()
                     if "because" in hypothesis_str:
                         ans, expl = hypothesis_str.split('because', maxsplit=1)
                         expls.append(f"because {expl.strip()}")
@@ -188,10 +213,13 @@ class VqaGenXTask(OFATask):
             else:
                 raise NotImplementedError("Error: Unknown inference type encountered.")
 
-        questions = [decode_fn(x[x.ne(1)], self.tgt_dict, self.bpe, self.generator).strip() for x in sample["net_input"]["src_tokens"]]
+        questions = [decode(x[x.ne(1)]).strip() for x in sample["net_input"]["src_tokens"]]
         scores = [ref_dict.get(hyp, 0) for ref_dict, hyp in zip(sample['ref_dict'], hyps)]
-        target_expls = [decode_fn(x[x.ne(1)], self.tgt_dict, self.bpe, self.generator).strip() for x in sample["explanations"]]
+        target_expls = [decode(x[x.ne(1)]).strip() for x in sample["explanations"]]
         expl_scores = [self.compute_similarity(expl, target) for expl, target in zip(expls, target_expls)]
+        val_metrics = aggregate_metrics(
+            [calculate_expl_metrics(expl, target_expl) for expl, target_expl in zip(expls, target_expls)]
+        )
 
         # Log samples to wandb
         for q, raw, ans, expl, ref_dict, target_expl in zip(questions, raw_hyps, hyps, expls, sample['ref_dict'], target_expls):
@@ -199,7 +227,7 @@ class VqaGenXTask(OFATask):
             # remove padding from decoder prompt
             prefix_len = sample['prefix_tokens'][i].ne(1).sum().item()
             hypothesis = hypothesis[prefix_len:]
-            hypothesis_str = decode_fn(hypothesis, self.tgt_dict, self.bpe, self.generator).strip()
+            hypothesis_str = decode(hypothesis).strip()
             target_ans = f"{ref_dict}"
             table.add_data(q, hypothesis_str, ans, expl, target_ans, target_expl)
 
@@ -207,8 +235,10 @@ class VqaGenXTask(OFATask):
         logging_output["_vqa_cnt"] = len(scores)
         logging_output["_expl_score_sum"] = sum(expl_scores)
         logging_output["_expl_cnt"] = len(expl_scores)
-        logging_output["_total_sum_scores"] = sum([scores[i] * expl_scores[i] for i in range(len(scores))])
+        logging_output["_total_score_sum"] = sum([scores[i] * expl_scores[i] for i in range(len(scores))])
         logging_output["_total_cnt"] = len(scores)
+
+        logging_output = dict(logging_output, **val_metrics)
 
         return loss, sample_size, logging_output
 
@@ -227,20 +257,17 @@ class VqaGenXTask(OFATask):
             score = score if isinstance(score, float) else score.item()
             return round(score, 4)
 
-        if sum_logs("_vqa_cnt") > 0:
-            metrics.log_scalar("_vqa_score_sum", sum_logs("_vqa_score_sum"))
-            metrics.log_scalar("_vqa_cnt", sum_logs("_vqa_cnt"))
-            metrics.log_derived("vqa_score", partial(compute_score, sum_key="_vqa_score_sum", cnt_key="_vqa_cnt"))
+        def derived_metrics(count_key, sum_key, log_key):
+            if sum_logs(count_key) > 0:
+                metrics.log_scalar(sum_key, sum_logs(sum_key))
+                metrics.log_scalar(count_key, sum_logs(count_key))
+                metrics.log_derived(log_key, partial(compute_score, sum_key=sum_key, cnt_key=count_key))
 
-        if sum_logs("_expl_cnt") > 0:
-            metrics.log_scalar("_expl_score_sum", sum_logs("_expl_score_sum"))
-            metrics.log_scalar("_expl_cnt", sum_logs("_expl_cnt"))
-            metrics.log_derived("expl_score", partial(compute_score, sum_key="_expl_score_sum", cnt_key="_expl_cnt"))
-
-        if sum_logs("_total_cnt") > 0:
-            metrics.log_scalar("_total_sum_scores", sum_logs("_total_sum_scores"))
-            metrics.log_scalar("_total_cnt", sum_logs("_total_cnt"))
-            metrics.log_derived("total_score", partial(compute_score, sum_key="_total_sum_scores", cnt_key="_total_cnt"))
+        counts = [k for k in logging_outputs[0].keys() if k.endswith("_cnt")]
+        sums = [k for k in logging_outputs[0].keys() if k.endswith("_sum")]
+        log_names = [f"{k.split('_')[1]}_score" for k in counts]
+        for count_key, sum_key, log_key in zip(counts, sums, log_names):
+            derived_metrics(count_key, sum_key, log_key)
 
     def compute_similarity(self, target, expl):
         embeds = torch.from_numpy(self.similarity_model.encode([target, expl], show_progress_bar=False))
