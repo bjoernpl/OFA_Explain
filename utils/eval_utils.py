@@ -9,6 +9,7 @@ import json
 from itertools import chain
 import os
 
+import functools
 import torch
 import torch.distributed as dist
 
@@ -111,6 +112,31 @@ def eval_vqa_gen(task, generator, models, sample, **kwargs):
     scores = [ref_dict.get(hyp, 0) for ref_dict, hyp in zip(sample['ref_dict'], hyps)]
     return results, scores
 
+def eval_vqa_gen_x(task, generator, models, sample, **kwargs):
+    if kwargs['beam_search_vqa_eval']:
+        decode = functools.partial(decode_fn, tgt_dict=task.tgt_dict, bpe=task.bpe, generator=generator)
+        raw_hyps = task.inference_step(generator, models, sample, prefix_tokens=sample["prefix_tokens"])
+        hyps = []
+        expls = []
+        correct_format = 0
+        for i, sample_id in enumerate(sample["id"].tolist()):
+            hypothesis = raw_hyps[i][0]["tokens"]
+            # remove padding from decoder prompt
+            prefix_len = sample['prefix_tokens'][i].ne(1).sum().item()
+            hypothesis = hypothesis[prefix_len:]
+            hypothesis_str = decode(hypothesis).strip()
+            if "because" in hypothesis_str:
+                ans, expl = hypothesis_str.split('because', maxsplit=1)
+                expls.append(f"because {expl.strip()}")
+                hyps.append(ans.strip())
+                correct_format += 1
+            else:
+                hyps.append(hypothesis_str)
+                expls.append("")
+        questions = [decode(x[x.ne(1)]).strip() for x in sample["net_input"]["src_tokens"]]
+        scores = [ref_dict.get(hyp, 0) for ref_dict, hyp in zip(sample['ref_dict'], hyps)]
+        target_expls = [decode(x[x.ne(1)]).strip() for x in sample["explanations"]]
+        expl_scores = [task.compute_similarity(expl, target) for expl, target in zip(expls, target_expls)]
 
 def eval_refcoco(task, generator, models, sample, **kwargs):
     def _calculate_ap_score(hyps, refs, thresh=0.5):
@@ -304,6 +330,8 @@ def eval_step(task, generator, models, sample, **kwargs):
         return eval_caption(task, generator, models, sample, **kwargs)
     elif task.cfg._name == 'vqa_gen':
         return eval_vqa_gen(task, generator, models, sample, **kwargs)
+    elif task.cfg._name == 'vqa_gen_x':
+        return eval_vqa_gen_x(task, generator, models, sample, **kwargs)
     elif task.cfg._name == 'refcoco':
         return eval_refcoco(task, generator, models, sample, **kwargs)
     elif task.cfg._name == 'snli_ve':
@@ -329,6 +357,23 @@ def merge_results(task, cfg, logger, score_cnt, score_sum, results):
             logger.info("score_sum: {}, score_cnt: {}, score: {}".format(
                 score_sum, score_cnt, round(score_sum.item() / score_cnt.item(), 4)
             ))
+    elif task.cfg._name == 'vqa_gen_x':
+        gather_results = None
+        if cfg.distributed_training.distributed_world_size > 1:
+            gather_results = [None for _ in range(dist.get_world_size())]
+            dist.all_gather_object(gather_results, results)
+            dist.all_reduce(score_sum.data)
+            dist.all_reduce(score_cnt.data)
+        if score_cnt.item() > 0:
+            vqa_score, expl_score, total_score = round(score_sum.item() / score_cnt.item(), 4)
+            logger.info(f"vqa_score: {vqa_score}, expl_score: {expl_score}, total_score: {total_score}, score_cnt: {score_cnt}")
+
+        if cfg.distributed_training.distributed_world_size == 1 or dist.get_rank() == 0:
+            os.makedirs(cfg.common_eval.results_path, exist_ok=True)
+            output_path = os.path.join(cfg.common_eval.results_path, "{}_predict.json".format(cfg.dataset.gen_subset))
+            gather_results = list(chain(*gather_results)) if gather_results is not None else results
+            with open(output_path, 'w') as fw:
+                json.dump(gather_results, fw)
     else:
         gather_results = None
         if cfg.distributed_training.distributed_world_size > 1:
