@@ -12,6 +12,10 @@ import pickle
 from functools import partial
 from typing import Optional
 from argparse import Namespace
+
+import torchvision.transforms.functional as TF
+import wandb
+
 from data.file_dataset import FileDataset
 
 import torch
@@ -222,14 +226,17 @@ class VqaGenXTask(OFATask):
         )
 
         # Log samples to wandb
-        for q, raw, ans, expl, ref_dict, target_expl in zip(questions, raw_hyps, hyps, expls, sample['ref_dict'], target_expls):
+        table_data = zip(questions, raw_hyps, hyps, expls, sample['ref_dict'], target_expls, sample['net_input']['patch_images'])
+        for q, raw, ans, expl, ref_dict, target_expl, image in table_data:
             hypothesis = raw[0]["tokens"]
             # remove padding from decoder prompt
             prefix_len = sample['prefix_tokens'][i].ne(1).sum().item()
             hypothesis = hypothesis[prefix_len:]
             hypothesis_str = decode(hypothesis).strip()
             target_ans = f"{ref_dict}"
-            table.add_data(q, hypothesis_str, ans, expl, target_ans, target_expl)
+            image = TF.resize(image, [64, 64])
+            im = wandb.Image(image)
+            table.add_data(im, q, hypothesis_str, ans, expl, target_ans, target_expl)
 
         logging_output["_vqa_score_sum"] = sum(scores)
         logging_output["_vqa_cnt"] = len(scores)
