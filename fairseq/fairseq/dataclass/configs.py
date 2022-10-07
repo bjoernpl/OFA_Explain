@@ -729,6 +729,13 @@ class CheckpointConfig(FairseqDataclass):
             "(default: false, use ema weights (if exist) to init the ema param)"
         },
     )
+    upload_checkpoints_to_gdrive: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether or not to upload checkpoints to Google Drive during training. "
+                    "(default: false, do not upload checkpoints.)"
+        },
+    )
 
 
 @dataclass

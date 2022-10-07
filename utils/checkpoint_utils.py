@@ -7,6 +7,8 @@ import ast
 import collections
 import contextlib
 import logging
+import subprocess
+
 import numpy as np
 import os
 import re
@@ -187,6 +189,13 @@ def save_checkpoint(cfg: CheckpointConfig, trainer, epoch_itr, val_loss):
             elif PathManager.exists(old_chk):
                 PathManager.rm(old_chk)
 
+
+def upload_checkpoints_to_gdrive(cfg):
+    for checkpoint in checkpoint_paths(cfg.save_dir):
+        run_name = os.environ.get("WANDB_NAME", os.path.basename(cfg.checkpoint.save_dir))
+        logger.info(f"Uploading checkpoint {checkpoint} to gdrive")
+        subprocess.run([f"./upload_checkpoints {run_name} {checkpoint}"])
+        os.remove(checkpoint)
 
 def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
     """
