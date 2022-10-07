@@ -27,6 +27,7 @@ from data.mm_data.vqa_gen_x_dataset import VqaGenXDataset
 from models import search
 from data import data_utils
 from tasks.ofa_task import OFAConfig, OFATask
+from utils import eval_utils
 from utils.trie import Trie
 from sentence_transformers import SentenceTransformer
 
@@ -196,24 +197,12 @@ class VqaGenXTask(OFATask):
         eval_model.eval()
         with torch.no_grad():
             if self.cfg.val_inference_type in ["beamsearch", "beamsearch+similarity"]:
-                raw_hyps = self.inference_step(self.generator, [eval_model], sample, prefix_tokens=sample["prefix_tokens"])
-                hyps = []
-                expls = []
-                correct_format = 0
-                for i, sample_id in enumerate(sample["id"].tolist()):
-                    hypothesis = raw_hyps[i][0]["tokens"]
-                    # remove padding from decoder prompt
-                    prefix_len = sample['prefix_tokens'][i].ne(1).sum().item()
-                    hypothesis = hypothesis[prefix_len:]
-                    hypothesis_str = decode(hypothesis).strip()
-                    if "because" in hypothesis_str:
-                        ans, expl = hypothesis_str.split('because', maxsplit=1)
-                        expls.append(f"because {expl.strip()}")
-                        hyps.append(ans.strip())
-                        correct_format += 1
-                    else:
-                        hyps.append(hypothesis_str)
-                        expls.append("")
+                hyps, expls, raw_hyps = eval_utils.eval_step(
+                    task=self,
+                    generator=self.generator,
+                    models=[eval_model],
+                    sample=sample
+                )
             else:
                 raise NotImplementedError("Error: Unknown inference type encountered.")
 
