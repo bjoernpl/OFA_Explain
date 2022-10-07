@@ -113,30 +113,24 @@ def eval_vqa_gen(task, generator, models, sample, **kwargs):
     return results, scores
 
 def eval_vqa_gen_x(task, generator, models, sample, **kwargs):
-    if kwargs['beam_search_vqa_eval']:
-        decode = functools.partial(decode_fn, tgt_dict=task.tgt_dict, bpe=task.bpe, generator=generator)
-        raw_hyps = task.inference_step(generator, models, sample, prefix_tokens=sample["prefix_tokens"])
-        hyps = []
-        expls = []
-        correct_format = 0
-        for i, sample_id in enumerate(sample["id"].tolist()):
-            hypothesis = raw_hyps[i][0]["tokens"]
-            # remove padding from decoder prompt
-            prefix_len = sample['prefix_tokens'][i].ne(1).sum().item()
-            hypothesis = hypothesis[prefix_len:]
-            hypothesis_str = decode(hypothesis).strip()
-            if "because" in hypothesis_str:
-                ans, expl = hypothesis_str.split('because', maxsplit=1)
-                expls.append(f"because {expl.strip()}")
-                hyps.append(ans.strip())
-                correct_format += 1
-            else:
-                hyps.append(hypothesis_str)
-                expls.append("")
-        questions = [decode(x[x.ne(1)]).strip() for x in sample["net_input"]["src_tokens"]]
-        scores = [ref_dict.get(hyp, 0) for ref_dict, hyp in zip(sample['ref_dict'], hyps)]
-        target_expls = [decode(x[x.ne(1)]).strip() for x in sample["explanations"]]
-        expl_scores = [task.compute_similarity(expl, target) for expl, target in zip(expls, target_expls)]
+    decode = functools.partial(decode_fn, tgt_dict=task.tgt_dict, bpe=task.bpe, generator=generator)
+    raw_hyps = task.inference_step(generator, models, sample, prefix_tokens=sample["prefix_tokens"])
+    hyps = []
+    expls = []
+    for i, sample_id in enumerate(sample["id"].tolist()):
+        hypothesis = raw_hyps[i][0]["tokens"]
+        # remove padding from decoder prompt
+        prefix_len = sample['prefix_tokens'][i].ne(1).sum().item()
+        hypothesis = hypothesis[prefix_len:]
+        hypothesis_str = decode(hypothesis).strip()
+        if "because" in hypothesis_str:
+            ans, expl = hypothesis_str.split('because', maxsplit=1)
+            expls.append(f"because {expl.strip()}")
+            hyps.append(ans.strip())
+        else:
+            hyps.append(hypothesis_str)
+            expls.append("")
+    return hyps, expls, raw_hyps
 
 def eval_refcoco(task, generator, models, sample, **kwargs):
     def _calculate_ap_score(hyps, refs, thresh=0.5):
