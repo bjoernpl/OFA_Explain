@@ -359,8 +359,8 @@ def merge_results(task, cfg, logger, score_cnt, score_sum, results):
             dist.all_reduce(score_sum.data)
             dist.all_reduce(score_cnt.data)
         if score_cnt.item() > 0:
-            vqa_score, expl_score, total_score = round(score_sum.item() / score_cnt.item(), 4)
-            logger.info(f"vqa_score: {vqa_score}, expl_score: {expl_score}, total_score: {total_score}, score_cnt: {score_cnt}")
+            vqa_score = round(score_sum.item() / score_cnt.item(), 4)
+            logger.info(f"vqa_score: {vqa_score}, score_cnt: {score_cnt}")
 
         if cfg.distributed_training.distributed_world_size == 1 or dist.get_rank() == 0:
             os.makedirs(cfg.common_eval.results_path, exist_ok=True)
