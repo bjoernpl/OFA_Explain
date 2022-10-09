@@ -77,16 +77,7 @@ def calculate_expl_metrics(expl, target):
 class VqaGenXConfig(OFAConfig):
     max_object_length: int = field(
         default=30, metadata={"help": "the maximum object sequence length"}
-    )    
-    ans2label_dict: Optional[str] = field(
-        default='{"no": 0, "yes":1}',
-        metadata={"help": 'answer to label dict'},
     )
-    ans2label_file: Optional[str] = field(
-        default=None,
-        metadata={"help": "path to load ans2label file"},
-    )
-
     add_object: bool = field(
         default=False,
         metadata={"help": "add object to encoder"},
@@ -119,12 +110,6 @@ class VqaGenXConfig(OFAConfig):
 class VqaGenXTask(OFATask):
     def __init__(self, cfg: VqaGenXConfig, src_dict, tgt_dict):
         super().__init__(cfg, src_dict, tgt_dict)
-
-        self.ans2label_dict = None
-        if self.cfg.ans2label_file is not None:
-            self.ans2label_dict = pickle.load(open(self.cfg.ans2label_file, "rb"))
-        else:
-            self.ans2label_dict = json.loads(self.cfg.ans2label_dict)
 
         self.uses_ema = self.cfg.uses_ema
 
@@ -216,7 +201,7 @@ class VqaGenXTask(OFATask):
 
         # Log samples to wandb
         table_data = zip(questions, raw_hyps, hyps, expls, sample['ref_dict'], target_expls, sample['net_input']['patch_images'])
-        for q, raw, ans, expl, ref_dict, target_expl, image in table_data:
+        for i, (q, raw, ans, expl, ref_dict, target_expl, image) in table_data:
             hypothesis = raw[0]["tokens"]
             # remove padding from decoder prompt
             prefix_len = sample['prefix_tokens'][i].ne(1).sum().item()
