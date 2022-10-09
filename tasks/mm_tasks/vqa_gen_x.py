@@ -201,7 +201,7 @@ class VqaGenXTask(OFATask):
 
         # Log samples to wandb
         table_data = zip(questions, raw_hyps, hyps, expls, sample['ref_dict'], target_expls, sample['net_input']['patch_images'])
-        for i, (q, raw, ans, expl, ref_dict, target_expl, image) in table_data:
+        for i, (q, raw, ans, expl, ref_dict, target_expl, image) in enumerate(table_data):
             hypothesis = raw[0]["tokens"]
             # remove padding from decoder prompt
             prefix_len = sample['prefix_tokens'][i].ne(1).sum().item()
