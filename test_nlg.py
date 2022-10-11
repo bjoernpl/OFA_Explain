@@ -14,6 +14,8 @@
 # limitations under the License.
 import random
 
+import numpy as np
+
 from cococaption.pycocoevalcap.bleu.bleu import Bleu
 from cococaption.pycocoevalcap.cider.cider import Cider
 from cococaption.pycocoevalcap.meteor.meteor import Meteor
@@ -140,11 +142,13 @@ def get_nlg_scores(gen_expl, gt_expl, device):
     nlg_global_scores = {k: v[0] for k, v in nlg_scores.items()}
 
     try:
+        bert_metric.add_batch(predictions=gen_expl, references=gt_expl)
         bert_scores = bert_metric.compute(
             model_type="distilbert-base-uncased", device=device
         )
-        nlg_global_scores["BERTScore"] = bert_scores["f1"].mean().item()
-    except:
+        nlg_global_scores["BERTScore"] = np.array(bert_scores["f1"]).mean()
+    except Exception as e:
+        print(e)
         print("BERTScore failed, so set to 0.8")
         nlg_global_scores["BERTScore"] = 0.8
 
