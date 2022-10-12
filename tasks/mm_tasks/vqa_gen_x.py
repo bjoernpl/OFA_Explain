@@ -151,7 +151,6 @@ class VqaGenXTask(OFATask):
         elif self.cfg.val_inference_type == "beamsearch+similarity":
             gen_args = json.loads(self.cfg.eval_args)
             gen_args["match_source_len"] = False
-            gen_args["beam_size"] = 5
             self.generator = self.build_generator(
                 [model], Namespace(**gen_args)
             )
