@@ -7,6 +7,7 @@ import json
 import logging
 import math
 import random
+from argparse import Namespace
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -58,12 +59,14 @@ def calculate_expl_metrics(expl, target, bert_metric=None):
     final_metrics = {}
     bleu = eval_metrics.bleu_score(expl, [target])
     rouge = eval_metrics.text.rouge_score(expl, target, rouge_keys=("rougeL"))
-    if bert_metric is not None:
-        bert_metric.add_batch(predictions=expl, references=[target])
+    if bert_metric is not None and expl is not "":
+        bert_metric.add_batch(predictions=[expl], references=[[target]])
         bert_score = bert_metric.compute(
             model_type="distilbert-base-uncased"
         )
         final_metrics["BERTScore"] = torch.tensor(bert_score["f1"]).mean()
+    else:
+        final_metrics["BERTScore"] = torch.tensor(0.0)
     final_metrics.update({
         "bleu": bleu,
         "rouge-fmeasure": rouge['rougeL_fmeasure'],
@@ -89,6 +92,12 @@ class ESnliVeConfig(OFAConfig):
     prompt_type: Optional[str] = field(
         default=None,
         metadata={"help": "prompt_type"},
+    )
+    eval_args: Optional[str] = field(
+        default='{"beam":1,"unnormalized":true,"temperature":1.0}',
+        metadata={
+            "help": 'generation args as JSON string for inference, only activated when --val-inference-type=beamsearch'
+        },
     )
 
 
@@ -127,6 +136,11 @@ class ESnliVeTask(OFATask):
 
     def build_model(self, cfg):
         model = super().build_model(cfg)
+        gen_args = json.loads(self.cfg.eval_args)
+        gen_args["match_source_len"] = False
+        self.generator = self.build_generator(
+            [model], Namespace(**gen_args)
+        )
         return model
 
     def build_generator(
@@ -139,19 +153,12 @@ class ESnliVeTask(OFATask):
         loss, sample_size, logging_output = super().valid_step(sample, model, criterion)
 
         decode = functools.partial(decode_fn, tgt_dict=self.tgt_dict, bpe=self.bpe, generator=self.generator)
-        if self.uses_ema:
-            assert 'ema_model' in extra_kwargs and extra_kwargs['ema_model'] is not None
-        if self.uses_ema:
-            eval_model = extra_kwargs['ema_model']
-        else:
-            eval_model = model
-
-        eval_model.eval()
+        model.eval()
         with torch.no_grad():
             hyps, expls, raw_hyps = eval_utils.eval_step(
                 task=self,
                 generator=self.generator,
-                models=[eval_model],
+                models=[model],
                 sample=sample
             )
 
@@ -171,7 +178,7 @@ class ESnliVeTask(OFATask):
         for i, (q, raw, ans, expl, ref_dict, target_expl, image) in enumerate(table_data):
             hypothesis = raw[0]["tokens"]
             # remove padding from decoder prompt
-            prefix_len = sample['prefix_tokens'][i].ne(1).sum().item()
+            prefix_len = sample['decoder_prompts'][i].ne(1).sum().item()
             hypothesis = hypothesis[prefix_len:]
             hypothesis_str = decode(hypothesis).strip()
             target_ans = f"{ref_dict}"

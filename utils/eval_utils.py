@@ -226,14 +226,14 @@ def eval_snli_ve(task, generator, models, sample, **kwargs):
 
 def eval_e_snli_ve(task, generator, models, sample, **kwargs):
     decode = functools.partial(decode_fn, tgt_dict=task.tgt_dict, bpe=task.bpe, generator=generator)
-    raw_hyps = task.inference_step(generator, models, sample, prefix_tokens=sample["prefix_tokens"])
+    raw_hyps = task.inference_step(generator, models, sample, prefix_tokens=sample["decoder_prompts"])
 
     expls = []
     hyps = []
     for i, sample_id in enumerate(sample["id"].tolist()):
         hypothesis = raw_hyps[i][0]["tokens"]
         # remove padding from decoder prompt
-        prefix_len = sample['prefix_tokens'][i].ne(1).sum().item()
+        prefix_len = sample['decoder_prompts'][i].ne(1).sum().item()
         hypothesis = hypothesis[prefix_len:]
         hypothesis_str = decode(hypothesis).strip()
         if "because" in hypothesis_str:
