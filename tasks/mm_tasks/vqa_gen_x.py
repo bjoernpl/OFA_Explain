@@ -3,18 +3,17 @@
 # This source code is licensed under the Apache 2.0 license 
 # found in the LICENSE file in the root directory.
 import functools
+import random
 from dataclasses import dataclass, field
 import json
 import logging
-import os
-import math
-import pickle
 from functools import partial
 from typing import Optional
 from argparse import Namespace
 
 import torchvision.transforms.functional as TF
 import wandb
+from datasets import load_metric
 
 from data.file_dataset import FileDataset
 
@@ -24,12 +23,8 @@ from fairseq.tasks import register_task
 import torchmetrics.functional as eval_metrics
 
 from data.mm_data.vqa_gen_x_dataset import VqaGenXDataset
-from models import search
-from data import data_utils
 from tasks.ofa_task import OFAConfig, OFATask
 from utils import eval_utils
-from utils.trie import Trie
-from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
 
@@ -57,20 +52,25 @@ def aggregate_metrics(examples):
         agg_metrics[f"_{k}_cnt"] = len(examples)
     return agg_metrics
 
-def calculate_expl_metrics(expl, target):
+def calculate_expl_metrics(expl, target, bert_metric=None):
     # Calculate metrics: BLEU, ROUGE, BERTScore for one sample
+    final_metrics = {}
     bleu = eval_metrics.bleu_score(expl, [target])
     rouge = eval_metrics.text.rouge_score(expl, target, rouge_keys=("rougeL"))
-    # bert_score = eval_metrics.text.bert_score([expl], [target])
-    final_metrics = {
+    if bert_metric is not None and expl is not "":
+        bert_metric.add_batch(predictions=[expl], references=[[target]])
+        bert_score = bert_metric.compute(
+            model_type="distilbert-base-uncased"
+        )
+        final_metrics["BERTScore"] = torch.tensor(bert_score["f1"]).mean()
+    else:
+        final_metrics["BERTScore"] = torch.tensor(0.0)
+    final_metrics.update({
         "bleu": bleu,
         "rouge-fmeasure": rouge['rougeL_fmeasure'],
         "rouge-precision": rouge['rougeL_precision'],
         "rouge-recall": rouge['rougeL_recall'],
-        #"bert_score_f1": bert_score["f1"],
-        #"bert_score_precision": bert_score["precision"],
-        #"bert_score_recall": bert_score["recall"],
-    }
+    })
     return final_metrics
 
 @dataclass
@@ -110,6 +110,10 @@ class VqaGenXConfig(OFAConfig):
 class VqaGenXTask(OFATask):
     def __init__(self, cfg: VqaGenXConfig, src_dict, tgt_dict):
         super().__init__(cfg, src_dict, tgt_dict)
+        self.bert_metric = load_metric(
+            "bertscore",
+            experiment_id=str(random.randrange(999999)),
+        )
 
         self.uses_ema = self.cfg.uses_ema
 
@@ -154,7 +158,6 @@ class VqaGenXTask(OFATask):
             self.generator = self.build_generator(
                 [model], Namespace(**gen_args)
             )
-            self.similarity_model = SentenceTransformer("stsb-mpnet-base-v2")
         else:
             raise NotImplementedError("Error: Unknown inference type encountered.")
 
@@ -193,10 +196,12 @@ class VqaGenXTask(OFATask):
         questions = [decode(x[x.ne(1)]).strip() for x in sample["net_input"]["src_tokens"]]
         scores = [ref_dict.get(hyp, 0) for ref_dict, hyp in zip(sample['ref_dict'], hyps)]
         target_expls = [decode(x[x.ne(1)]).strip() for x in sample["explanations"]]
-        expl_scores = [self.compute_similarity(expl, target) for expl, target in zip(expls, target_expls)]
-        val_metrics = aggregate_metrics(
-            [calculate_expl_metrics(expl, target_expl) for expl, target_expl in zip(expls, target_expls)]
-        )
+        val_metrics_split = [
+            calculate_expl_metrics(expl, target_expl, self.bert_metric)
+            for expl, target_expl in zip(expls, target_expls)
+        ]
+        val_metrics = aggregate_metrics(val_metrics_split)
+        expl_scores = [m["BERTScore"] for m in val_metrics_split]
 
         # Log samples to wandb
         table_data = zip(questions, raw_hyps, hyps, expls, sample['ref_dict'], target_expls, sample['net_input']['patch_images'])
@@ -207,7 +212,7 @@ class VqaGenXTask(OFATask):
             hypothesis = hypothesis[prefix_len:]
             hypothesis_str = decode(hypothesis).strip()
             target_ans = f"{ref_dict}"
-            image = TF.resize(image, [64, 64])
+            image = TF.resize(image, [128, 128])
             im = wandb.Image(image)
             table.add_data(im, q, hypothesis_str, ans, expl, target_ans, target_expl)
 
@@ -248,7 +253,3 @@ class VqaGenXTask(OFATask):
         log_names = [f"{k.split('_')[1]}_score" for k in counts]
         for count_key, sum_key, log_key in zip(counts, sums, log_names):
             derived_metrics(count_key, sum_key, log_key)
-
-    def compute_similarity(self, target, expl):
-        embeds = torch.from_numpy(self.similarity_model.encode([target, expl], show_progress_bar=False))
-        return torch.clip(torch.nn.functional.cosine_similarity(embeds[0], embeds[1], dim=0), min=0, max=1).item()
