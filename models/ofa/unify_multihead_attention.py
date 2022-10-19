@@ -91,6 +91,21 @@ class MultiheadAttention(nn.Module):
 
         self.onnx_trace = False
 
+        self.attention_map = None
+        self.attn_gradients = None
+
+    def save_attn_gradients(self, attn_gradients):
+        self.attn_gradients = attn_gradients
+
+    def get_attn_gradients(self):
+        return self.attn_gradients
+
+    def save_attention_map(self, attention_map):
+        self.attention_map = attention_map
+
+    def get_attention_map(self):
+        return self.attention_map
+
     def prepare_for_onnx_export_(self):
         self.onnx_trace = True
 
@@ -376,6 +391,10 @@ class MultiheadAttention(nn.Module):
         )
         attn_weights = attn_weights_float.type_as(attn_weights)
         attn_probs = self.dropout_module(attn_weights)
+
+        self.save_attention_map(attn_probs)
+        attn_probs.requires_grad_(True)
+        attn_probs.register_hook(self.save_attn_gradients)
 
         assert v is not None
         attn = torch.bmm(attn_probs, v)

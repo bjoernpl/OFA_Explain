@@ -110,6 +110,21 @@ class TransformerEncoderLayer(nn.Module):
 
         self.drop_path = DropPath(drop_path_rate) if drop_path_rate > 0.0 else nn.Identity()
 
+        self.attn_gradients = None
+        self.attention_map = None
+
+    def save_attention_gradients(self, attn_gradients):
+        self.attn_gradients = attn_gradients
+
+    def get_attention_gradients(self):
+        return self.attn_gradients
+
+    def save_attention_map(self, attention_map):
+        self.attention_map = attention_map
+
+    def get_attention_map(self):
+        return self.attention_map
+
     def build_fc1(self, input_dim, output_dim, q_noise, qn_block_size):
         return quant_noise(
             nn.Linear(input_dim, output_dim), p=q_noise, block_size=qn_block_size
@@ -205,6 +220,12 @@ class TransformerEncoderLayer(nn.Module):
         )
         if self.attn_ln is not None:
             x = self.attn_ln(x)
+
+        self.save_attention_map(self.self_attn.get_attention_map())
+        #x.requires_grad_(True)
+        #x.register_hook(self.save_attention_gradients)
+        self.save_attention_gradients(self.self_attn.get_attn_gradients())
+
         x = self.dropout_module(x)
         x = self.residual_connection(x, residual)
         if not self.normalize_before:
@@ -317,6 +338,21 @@ class TransformerDecoderLayer(nn.Module):
         self.onnx_trace = False
 
         self.drop_path = DropPath(drop_path_rate) if drop_path_rate > 0.0 else nn.Identity()
+
+        self.attn_gradients = None
+        self.attention_map = None
+
+    def save_attn_gradients(self, attn_gradients):
+        self.attn_gradients = attn_gradients
+
+    def get_attn_gradients(self):
+        return self.attn_gradients
+
+    def save_attention_map(self, attention_map):
+        self.attention_map = attention_map
+
+    def get_attention_map(self):
+        return self.attention_map
 
     def build_fc1(self, input_dim, output_dim, q_noise, qn_block_size):
         return quant_noise(nn.Linear(input_dim, output_dim), q_noise, qn_block_size)
@@ -479,6 +515,7 @@ class TransformerDecoderLayer(nn.Module):
             if not self.normalize_before:
                 x = self.encoder_attn_layer_norm(x)
 
+        self.save_attention_map(self.encoder_attn.attention_map)
         residual = x
         if self.normalize_before:
             x = self.final_layer_norm(x)
