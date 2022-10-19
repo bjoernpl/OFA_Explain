@@ -182,7 +182,7 @@ class ESnliVeTask(OFATask):
             hypothesis = hypothesis[prefix_len:]
             hypothesis_str = decode(hypothesis).strip()
             target_ans = f"{ref_dict}"
-            image = TF.resize(image, [64, 64])
+            image = TF.resize(image, [128, 128])
             im = wandb.Image(image)
             table.add_data(im, q, hypothesis_str, ans, expl, target_ans, target_expl)
 
