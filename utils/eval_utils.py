@@ -224,6 +224,7 @@ def eval_snli_ve(task, generator, models, sample, **kwargs):
     scores = [ref_dict.get(hyp, 0) for ref_dict, hyp in zip(sample['ref_dict'], hyps)]
     return results, scores
 
+
 def eval_e_snli_ve(task, generator, models, sample, **kwargs):
     decode = functools.partial(decode_fn, tgt_dict=task.tgt_dict, bpe=task.bpe, generator=generator)
     raw_hyps = task.inference_step(generator, models, sample, prefix_tokens=sample["decoder_prompts"])
@@ -245,6 +246,27 @@ def eval_e_snli_ve(task, generator, models, sample, **kwargs):
             expls.append("")
     return hyps, expls, raw_hyps
 
+
+def eval_vcr(task, generator, models, sample, **kwargs):
+    decode = functools.partial(decode_fn, tgt_dict=task.tgt_dict, bpe=task.bpe, generator=generator)
+    raw_hyps = task.inference_step(generator, models, sample, prefix_tokens=sample["decoder_prompts"])
+
+    expls = []
+    hyps = []
+    for i, sample_id in enumerate(sample["id"].tolist()):
+        hypothesis = raw_hyps[i][0]["tokens"]
+        # remove padding from decoder prompt
+        prefix_len = sample['decoder_prompts'][i].ne(1).sum().item()
+        hypothesis = hypothesis[prefix_len:]
+        hypothesis_str = decode(hypothesis).strip()
+        if "because" in hypothesis_str:
+            ans, expl = hypothesis_str.split('because', maxsplit=1)
+            expls.append(f"because {expl.strip()}")
+            hyps.append(ans.strip())
+        else:
+            hyps.append(hypothesis_str)
+            expls.append("")
+    return hyps, expls, raw_hyps
 
 def eval_image_gen(task, generator, models, sample, **kwargs):
     hypos, _ = task.inference_image(generator, sample, models)
@@ -353,6 +375,8 @@ def eval_step(task, generator, models, sample, **kwargs):
         return eval_snli_ve(task, generator, models, sample, **kwargs)
     elif task.cfg._name == 'e_snli_ve':
         return eval_e_snli_ve(task, generator, models, sample, **kwargs)
+    elif task.cfg._name == 'vcr':
+        return eval_vcr(task, generator, models, sample, **kwargs)
     elif task.cfg._name == 'image_gen':
         return eval_image_gen(task, generator, models, sample, **kwargs)
     elif task.cfg._name in {'cola', 'mnli', 'mrpc', 'qnli', 'qqp', 'rte', 'sst2'}:
