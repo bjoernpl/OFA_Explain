@@ -4,23 +4,26 @@
 # you need to specify different port numbers.
 export MASTER_PORT=7081
 
+src_dir="../../"
+export PYTHONPATH="${src_dir}:${src_dir}/fairseq:${PYTHONPATH}"
+
 user_dir=../../ofa_module
 bpe_dir=../../utils/BPE
 
 # dev or test
-split=$1
+split=test
 
-data=../../dataset/snli_ve_data/snli_ve_${split}.tsv
+data=../../../data/esnlive/esnlive_test.tsv
 path=../../checkpoints/snli_ve_large_best.pt
-result_path=../../results/snli_ve
+result_path=../../../results/esnlive_test
 selected_cols=0,2,3,4,5
 
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 -m torch.distributed.launch --nproc_per_node=8 --master_port=${MASTER_PORT} ../../evaluate.py \
+python3 -m torch.distributed.launch --nproc_per_node=1 --master_port=${MASTER_PORT} ../../evaluate.py \
     ${data} \
     --path=${path} \
     --user-dir=${user_dir} \
     --task=snli_ve \
-    --batch-size=8 \
+    --batch-size=16 \
     --log-format=simple --log-interval=10 \
     --seed=7 \
     --gen-subset=${split} \
