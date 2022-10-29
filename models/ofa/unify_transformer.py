@@ -502,6 +502,8 @@ class TransformerEncoder(FairseqEncoder):
         self.register_buffer("image_rp_bucket", image_rp_bucket)
         self.entangle_position_embedding = args.entangle_position_embedding
 
+        self.embed_tokens_identity = nn.Identity()
+
     def build_encoder_layer(self, args, drop_path_rate=0.0):
         layer = TransformerEncoderLayer(args, drop_path_rate=drop_path_rate)
         checkpoint = getattr(args, "checkpoint_activations", False)
@@ -577,6 +579,7 @@ class TransformerEncoder(FairseqEncoder):
         # embed tokens and positions
         if token_embedding is None:
             token_embedding = self.embed_tokens(src_tokens)
+            token_embedding = self.embed_tokens_identity(token_embedding)
         x = embed = self.embed_scale * token_embedding
         if self.entangle_position_embedding and pos_embed is not None:
             x += pos_embed
