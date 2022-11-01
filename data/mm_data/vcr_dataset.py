@@ -157,6 +157,8 @@ class VCRDataset(OFADataset):
 
         explanation = f" because {explanation}"
         expl_target_item = self.encode_text(explanation)
+        # enforce max length
+        expl_target_item = expl_target_item[:self.max_tgt_length]
 
 
         src_item = torch.cat([self.bos_item, src_item, self.eos_item])
