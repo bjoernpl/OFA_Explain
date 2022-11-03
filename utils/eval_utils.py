@@ -132,6 +132,19 @@ def eval_vqa_gen_x(task, generator, models, sample, **kwargs):
             expls.append("")
     return hyps, expls, raw_hyps
 
+def eval_vcr_baseline(task, generator, models, sample, **kwargs):
+    decode = functools.partial(decode_fn, tgt_dict=task.tgt_dict, bpe=task.bpe, generator=generator)
+    raw_hyps = task.inference_step(generator, models, sample, prefix_tokens=sample["prefix_tokens"])
+    hyps = []
+    for i, sample_id in enumerate(sample["id"].tolist()):
+        hypothesis = raw_hyps[i][0]["tokens"]
+        # remove padding from decoder prompt
+        prefix_len = sample['prefix_tokens'][i].ne(1).sum().item()
+        hypothesis = hypothesis[prefix_len:]
+        hypothesis_str = decode(hypothesis).strip()
+        hyps.append(hypothesis_str)
+    return hyps, raw_hyps
+
 def eval_refcoco(task, generator, models, sample, **kwargs):
     def _calculate_ap_score(hyps, refs, thresh=0.5):
         interacts = torch.cat(
@@ -377,6 +390,8 @@ def eval_step(task, generator, models, sample, **kwargs):
         return eval_e_snli_ve(task, generator, models, sample, **kwargs)
     elif task.cfg._name == 'vcr':
         return eval_vcr(task, generator, models, sample, **kwargs)
+    elif task.cfg._name == 'vcr_baseline':
+        return eval_vcr_baseline(task, generator, models, sample, **kwargs)
     elif task.cfg._name == 'image_gen':
         return eval_image_gen(task, generator, models, sample, **kwargs)
     elif task.cfg._name in {'cola', 'mnli', 'mrpc', 'qnli', 'qqp', 'rte', 'sst2'}:
