@@ -35,11 +35,13 @@ class CrossEntropyExplRegularizedCriterion(FairseqCriterion):
         task,
         sentence_avg,
         report_accuracy=False,
+        cosine_loss_scale=1.0
     ):
         super().__init__(task)
         self.loss = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
         self.sentence_avg = sentence_avg
         self.report_accuracy = report_accuracy
+        self.cosine_loss_scale = cosine_loss_scale
 
     def forward(self, model, sample, update_num=0, reduce=True):
         """Compute the loss for the given sample.
@@ -72,6 +74,7 @@ class CrossEntropyExplRegularizedCriterion(FairseqCriterion):
             expl_att_sum[i] = attention[i, expl_indices[i]].sum(0)
         cos_sim = torch.cosine_similarity(ans_att_sum, expl_att_sum, dim=1)
         cos_loss = ((1 - cos_sim) / 2).mean()
+        cos_loss = cos_loss * self.cosine_loss_scale
 
         loss, nll_loss = self.compute_loss(model, net_output, sample, update_num, reduce=reduce)
         loss += cos_loss
