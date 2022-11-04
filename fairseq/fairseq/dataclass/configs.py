@@ -1043,6 +1043,18 @@ class EMAConfig(FairseqDataclass):
 
 
 @dataclass
+class CriterionConfig(FairseqDataclass):
+    report_accuracy: bool = field(
+        default=False,
+        metadata={"help": "report accuracy metric"},
+    )
+    cosine_loss_scale: float = field(
+        default=1.0,
+        metadata={"help": "scale for cosine loss"},
+    )
+
+
+@dataclass
 class FairseqConfig(FairseqDataclass):
     common: CommonConfig = CommonConfig()
     common_eval: CommonEvalConfig = CommonEvalConfig()
@@ -1056,7 +1068,7 @@ class FairseqConfig(FairseqDataclass):
     interactive: InteractiveConfig = InteractiveConfig()
     model: Any = MISSING
     task: Any = None
-    criterion: Any = None
+    criterion: Any = CriterionConfig()
     optimizer: Any = None
     lr_scheduler: Any = None
     scoring: Any = None
