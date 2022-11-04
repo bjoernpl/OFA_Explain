@@ -57,7 +57,7 @@ class CrossEntropyExplRegularizedCriterion(FairseqCriterion):
         # set attention to 0 for padding tokens
         attention = attn * target.ne(self.padding_idx).unsqueeze(-1)
         # get indices of 'because' token (142)
-        indices = torch.tensor([a[1] for a in torch.where(target.eq(142))], device=target.device).unsqueeze(1)
+        indices = torch.tensor([a[1] for a in torch.where(target.eq(142))], device=target.device)
         bs = target.size(0)
         ans_indices = [
             torch.range(0, indices[i].item()-1, device=target.device, dtype=torch.long)
