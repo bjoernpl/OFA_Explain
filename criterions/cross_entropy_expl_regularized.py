@@ -57,21 +57,16 @@ class CrossEntropyExplRegularizedCriterion(FairseqCriterion):
         # set attention to 0 for padding tokens
         attention = attn * target.ne(self.padding_idx).unsqueeze(-1)
         # get indices of 'because' token (142)
-        indices = torch.tensor([a[1] for a in torch.where(target.eq(142))], device=target.device)
+        indices = (target == 142).nonzero()[:, 1]
         bs = target.size(0)
-        ans_indices = [
-            torch.range(0, indices[i].item()-1, device=target.device, dtype=torch.long)
-            for i in range(bs)
-        ]
-        expl_indices = [
-            torch.range(indices[i].item()+1, target.shape[1]-1, device=target.device, dtype=torch.long)
-            for i in range(bs)
-        ]
+
         ans_att_sum = torch.zeros((bs, attention.shape[-1]), device=target.device)
         expl_att_sum = torch.zeros((bs, attention.shape[-1]), device=target.device)
         for i in range(bs):
-            ans_att_sum[i] = attention[i, ans_indices[i]].sum(0)
-            expl_att_sum[i] = attention[i, expl_indices[i]].sum(0)
+            ans_indices = torch.range(0, indices[i].item()-1, device=target.device, dtype=torch.long)
+            expl_indices = torch.range(indices[i].item() + 1, target.shape[1] - 1, device=target.device, dtype=torch.long)
+            ans_att_sum[i] = attention[i, ans_indices].sum(0)
+            expl_att_sum[i] = attention[i, expl_indices].sum(0)
         cos_sim = torch.cosine_similarity(ans_att_sum, expl_att_sum, dim=1)
         cos_loss = ((1 - cos_sim) / 2).mean()
         cos_loss = cos_loss * self.cosine_loss_scale
