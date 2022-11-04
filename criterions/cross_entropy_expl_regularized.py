@@ -63,8 +63,8 @@ class CrossEntropyExplRegularizedCriterion(FairseqCriterion):
         ans_att_sum = torch.zeros((bs, attention.shape[-1]), device=target.device)
         expl_att_sum = torch.zeros((bs, attention.shape[-1]), device=target.device)
         for i in range(bs):
-            ans_indices = torch.range(0, indices[i].item()-1, device=target.device, dtype=torch.long)
-            expl_indices = torch.range(indices[i].item() + 1, target.shape[1] - 1, device=target.device, dtype=torch.long)
+            ans_indices = torch.arange(0, indices[i].item(), device=target.device, dtype=torch.long)
+            expl_indices = torch.arange(indices[i].item() + 1, target.shape[1], device=target.device, dtype=torch.long)
             ans_att_sum[i] = attention[i, ans_indices].sum(0)
             expl_att_sum[i] = attention[i, expl_indices].sum(0)
         cos_sim = torch.cosine_similarity(ans_att_sum, expl_att_sum, dim=1)
