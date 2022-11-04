@@ -6,3 +6,4 @@ from .vqa_gen import VqaGenTask
 from .vqa_gen_x import VqaGenXTask
 from .e_snli_ve import ESnliVeTask
 from .vcr import VCRTask
+from .vcr_baseline import VCRBaseTask
