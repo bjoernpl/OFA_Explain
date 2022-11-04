@@ -20,6 +20,10 @@ class CrossEntropyExplRegularizedCriterionConfig(FairseqDataclass):
         metadata={"help": "report accuracy metric"},
     )
     sentence_avg: bool = II("optimization.sentence_avg")
+    cosine_loss_scale: float = field(
+        default=1.0,
+        metadata={"help": "scale for cosine loss"},
+    )
 
 
 @register_criterion(
@@ -48,31 +52,29 @@ class CrossEntropyExplRegularizedCriterion(FairseqCriterion):
         net_output = model(**sample["net_input"])
         attn = net_output[1]["attn"][0]
         target = sample["target"]
-        attention = attn[target.ne(self.padding_idx)]
-        index = torch.where(target == 142)[0]
-        # all_range = utils.new_arange(target)
-        # ans_indices = all_range[all_range < index[0]]
-        ans_indices = [torch.range(0, index[i], device=target.device) for i in range(index.shape[0])]
-        expl_indices = [torch.range(index[i]+1, target.shape[0], device=target.device) for i in range(index.shape[0])]
-        ans_att = attention.gather(-1, ans_indices)
-        expl_att = attention.gather(-1, expl_indices)
-        cos_sim = torch.cosine_similarity(ans_att, expl_att, dim=1)
+        # set attention to 0 for padding tokens
+        attention = attn * target.ne(self.padding_idx).unsqueeze(-1)
+        # get indices of 'because' token (142)
+        indices = torch.tensor([a[1] for a in torch.where(target.eq(142))], device=target.device).unsqueeze(1)
+        bs = target.size(0)
+        ans_indices = [
+            torch.range(0, indices[i].item()-1, device=target.device, dtype=torch.long)
+            for i in range(bs)
+        ]
+        expl_indices = [
+            torch.range(indices[i].item()+1, target.shape[1]-1, device=target.device, dtype=torch.long)
+            for i in range(bs)
+        ]
+        ans_att_sum = torch.zeros((bs, attention.shape[-1]), device=target.device)
+        expl_att_sum = torch.zeros((bs, attention.shape[-1]), device=target.device)
+        for i in range(bs):
+            ans_att_sum[i] = attention[i, ans_indices[i]].sum(0)
+            expl_att_sum[i] = attention[i, expl_indices[i]].sum(0)
+        cos_sim = torch.cosine_similarity(ans_att_sum, expl_att_sum, dim=1)
         cos_loss = ((1 - cos_sim) / 2).mean()
 
-        # for b in range(attn.shape[0]):
-        #     tgt = sample["target"][b]
-        #     attention = attn[b]
-        #     attention = attention[tgt.ne(self.padding_idx)]
-        #     index = torch.where(tgt == 142)[0][0]
-        #     # split attention by index
-        #     ans_att = attention[:index].sum(dim=0)
-        #     expl_att = attention[index+1:].sum(dim=0)
-        #     # compute attention cosine similarity
-        #     cos_sim = torch.cosine_similarity(ans_att, expl_att, dim=0)
-        #     cos_loss = (1 - cos_sim) / 2
-
         loss, nll_loss = self.compute_loss(model, net_output, sample, update_num, reduce=reduce)
-        loss += cos_loss * 0.1
+        loss += cos_loss
         sample_size = (
             sample["target"].size(0) if self.sentence_avg else sample["ntokens"]
         )
@@ -117,7 +119,7 @@ class CrossEntropyExplRegularizedCriterion(FairseqCriterion):
         """Aggregate logging outputs from data parallel training."""
         loss_sum = sum(log.get("loss", 0) for log in logging_outputs)
         nll_loss_sum = sum(log.get("nll_loss", 0) for log in logging_outputs)
-
+        cos_loss_sum = sum(log.get("cos_loss", 0) for log in logging_outputs)
 
         ntokens = sum(log.get("ntokens", 0) for log in logging_outputs)
         nsentences = sum(log.get("nsentences", 0) for log in logging_outputs)
@@ -125,6 +127,9 @@ class CrossEntropyExplRegularizedCriterion(FairseqCriterion):
 
         metrics.log_scalar(
             "loss", loss_sum / sample_size, sample_size, round=4
+        )
+        metrics.log_scalar(
+            "cos_loss", cos_loss_sum / sample_size, sample_size, round=4
         )
         metrics.log_scalar(
             "nll_loss", nll_loss_sum / sample_size, sample_size, round=4
