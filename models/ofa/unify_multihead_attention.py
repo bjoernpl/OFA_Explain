@@ -395,6 +395,11 @@ class MultiheadAttention(nn.Module):
         self.save_attention_map(attn_probs)
         attn_probs.requires_grad_(True)
         attn_probs.register_hook(self.save_attn_gradients)
+        if self.encoder_decoder_attention:
+            add = torch.zeros_like(attn_probs, device=attn_probs.device)
+            add[:, 1:-1] = -attn_probs[:, 1:-1]*0.1 + attn_probs[:, 0].unsqueeze(1)*0.1
+            attn_probs = attn_probs + add
+
 
         assert v is not None
         attn = torch.bmm(attn_probs, v)
