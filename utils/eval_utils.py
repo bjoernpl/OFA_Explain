@@ -259,6 +259,27 @@ def eval_e_snli_ve(task, generator, models, sample, **kwargs):
             expls.append("")
     return hyps, expls, raw_hyps
 
+def eval_unify_explanation(task, generator, models, sample, **kwargs):
+    decode = functools.partial(decode_fn, tgt_dict=task.tgt_dict, bpe=task.bpe, generator=generator)
+    raw_hyps = task.inference_step(generator, models, sample, prefix_tokens=sample["decoder_prompts"])
+
+    expls = []
+    hyps = []
+    for i, sample_id in enumerate(sample["id"].tolist()):
+        hypothesis = raw_hyps[i][0]["tokens"]
+        # remove padding from decoder prompt
+        prefix_len = sample['decoder_prompts'][i].ne(1).sum().item()
+        hypothesis = hypothesis[prefix_len:]
+        hypothesis_str = decode(hypothesis).strip()
+        if "because" in hypothesis_str:
+            ans, expl = hypothesis_str.split('because', maxsplit=1)
+            expls.append(f"because {expl.strip()}")
+            hyps.append(ans.strip())
+        else:
+            hyps.append(hypothesis_str)
+            expls.append("")
+    return hyps, expls, raw_hyps
+
 
 def eval_vcr(task, generator, models, sample, **kwargs):
     decode = functools.partial(decode_fn, tgt_dict=task.tgt_dict, bpe=task.bpe, generator=generator)
@@ -378,6 +399,8 @@ def eval_image_classify(task, generator, models, sample, **kwargs):
 def eval_step(task, generator, models, sample, **kwargs):
     if task.cfg._name == 'caption':
         return eval_caption(task, generator, models, sample, **kwargs)
+    elif task.cfg._name == 'unify_explanation':
+        return eval_unify_explanation(task, generator, models, sample, **kwargs)
     elif task.cfg._name == 'vqa_gen':
         return eval_vqa_gen(task, generator, models, sample, **kwargs)
     elif task.cfg._name == 'vqa_gen_x':
