@@ -216,11 +216,13 @@ class UnifyExplanationTask(OFATask):
             task_name = task_id_to_name(sample['task_ids'][i])
             if f"_{task_name}_cnt" not in logging_output:
                 logging_output[f"_{task_name}_cnt"] = 0
-                logging_output[f"_{task_name}_score"] = 0
-                logging_output[f"_{task_name}_expl_score"] = 0
-            logging_output[f'_{task_name}_score'] += s
+                logging_output[f"_{task_name}_score_sum"] = 0
+                logging_output[f"_{task_name}-expl_score_sum"] = 0
+                logging_output[f"_{task_name}-expl_cnt"] = 0
+            logging_output[f'_{task_name}_score_sum'] += s
             logging_output[f'_{task_name}_cnt'] += 1
-            logging_output[f'_{task_name}_expl_score'] += ex_s
+            logging_output[f'_{task_name}-expl_score_sum'] += ex_s
+            logging_output[f'_{task_name}-expl_cnt'] += 1
 
         logging_output["_task_score_sum"] = sum(scores)
         logging_output["_task_cnt"] = len(scores)
