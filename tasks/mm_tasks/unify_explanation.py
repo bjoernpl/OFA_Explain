@@ -204,7 +204,7 @@ class UnifyExplanationTask(OFATask):
         for i, (q, raw, ans, expl, ref_dict, target_expl, image) in enumerate(table_data):
             hypothesis = raw[0]["tokens"]
             # remove padding from decoder prompt
-            prefix_len = sample['prefix_tokens'][i].ne(1).sum().item()
+            prefix_len = sample['decoder_prompts'][i].ne(1).sum().item()
             hypothesis = hypothesis[prefix_len:]
             hypothesis_str = decode(hypothesis).strip()
             target_ans = f"{ref_dict}"
@@ -219,7 +219,7 @@ class UnifyExplanationTask(OFATask):
                 logging_output[f"_{task_name}_score"] = 0
                 logging_output[f"_{task_name}_expl_score"] = 0
             logging_output[f'_{task_name}_score'] += s
-            logging_output[f'_{task_name}_cnt'] += expl_scores[i]
+            logging_output[f'_{task_name}_cnt'] += 1
             logging_output[f'_{task_name}_expl_score'] += ex_s
 
         logging_output["_task_score_sum"] = sum(scores)

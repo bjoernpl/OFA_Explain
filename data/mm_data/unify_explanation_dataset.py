@@ -118,7 +118,8 @@ class UnifyExplanationDataset(OFADataset):
         add_caption=False,
         constraint_trie=None,
         imagenet_default_mean_and_std=False,
-        prompt_type="none"
+        prompt_type="none",
+        **kwargs
     ):
         super().__init__(split, dataset, bpe, src_dict, tgt_dict)
         self.max_src_length = max_src_length
@@ -150,9 +151,9 @@ class UnifyExplanationDataset(OFADataset):
             "vcr": torch.tensor([1]),
             "vqax": torch.tensor([2]),
         }
-        if uniq_id.contains("#"):
+        if "#" in uniq_id:
             task = "esnlive"
-        elif uniq_id.contains("-"):
+        elif "-" in uniq_id:
             task = "vcr"
         else:
             task = "vqax"
@@ -229,7 +230,7 @@ class UnifyExplanationDataset(OFADataset):
             "prev_output_tokens": prev_output_item,
             "decoder_prompt": decoder_prompt,
             "ref_dict": ref_dict,
-            "because_idx": torch.tensor(len(tgt_item)),
+            "because_idx": torch.tensor([tgt_item.size(0)]),
             "task_id": task_ids[task],
         }
         return example
