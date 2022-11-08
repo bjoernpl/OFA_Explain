@@ -396,6 +396,7 @@ class MultiheadAttention(nn.Module):
         attn_probs.requires_grad_(True)
         attn_probs.register_hook(self.save_attn_gradients)
         if self.encoder_decoder_attention:
+            # This is just for ESNLIVE / VCR because we know that we only generate one answer token
             add = torch.zeros_like(attn_probs, device=attn_probs.device)
             add[:, 1:-1] = -attn_probs[:, 1:-1]*0.1 + attn_probs[:, 0].unsqueeze(1)*0.1
             attn_probs = attn_probs + add
