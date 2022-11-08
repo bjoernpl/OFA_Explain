@@ -221,10 +221,10 @@ class TransformerEncoderLayer(nn.Module):
         if self.attn_ln is not None:
             x = self.attn_ln(x)
 
-        self.save_attention_map(self.self_attn.get_attention_map())
+        # self.save_attention_map(self.self_attn.get_attention_map())
         #x.requires_grad_(True)
         #x.register_hook(self.save_attention_gradients)
-        self.save_attention_gradients(self.self_attn.get_attn_gradients())
+        # self.save_attention_gradients(self.self_attn.get_attn_gradients())
 
         x = self.dropout_module(x)
         x = self.residual_connection(x, residual)
