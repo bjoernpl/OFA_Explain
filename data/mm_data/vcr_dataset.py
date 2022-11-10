@@ -59,10 +59,14 @@ def collate(samples, pad_idx, eos_idx):
     if samples[0].get("decoder_prompt", None) is not None:
         decoder_prompts = merge("decoder_prompt")
 
-    because_idxs = None
-    if samples[0].get("because_idx", None) is not None:
-        because_idxs = torch.cat([sample['because_idx'] for sample in samples])
 
+    explanations = None
+    if samples[0].get("explanation", None) is not None:
+        explanations = merge("explanation")
+
+    answers = None
+    if samples[0].get("answer", None) is not None:
+        answers = merge("answer")
 
     prev_output_tokens = None
     target = None
@@ -93,7 +97,8 @@ def collate(samples, pad_idx, eos_idx):
         "constraint_masks": constraint_masks,
         "decoder_prompts": decoder_prompts,
         "target": target,
-        "because_idxs": because_idxs
+        "explanations": explanations,
+        "answers": answers,
     }
 
     return batch
@@ -186,9 +191,11 @@ class VCRDataset(OFADataset):
             "patch_image": patch_image,
             "patch_mask": patch_mask,
             "target": target_item,
+            "prev_output_tokens": prev_output_item,
             "decoder_prompt": decoder_prompt,
             "ref_dict": ref_dict,
-            "because_idx": torch.tensor([tgt_item.size(0)]),
+            "answer": tgt_item,
+            "explanation": expl_target_item,
         }
         # if self.constraint_trie is not None:
         #     constraint_mask = torch.zeros((len(target_item), len(self.tgt_dict))).bool()
